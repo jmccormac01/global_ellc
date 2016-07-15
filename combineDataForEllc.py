@@ -9,7 +9,11 @@ import glob as g
 import argparse as ap
 
 def argParse():
-    parser = ap.ArgumentParser(description='Code for combining lcs into an ellc input file')
+    description="""
+               Code for combining lcs into an ellc input file\n
+               Run this in the folder with the lcs to combine
+                """
+    parser = ap.ArgumentParser(description=description)
     parser.add_argument('file_ids', help='wildcard name of files to combine')
     parser.add_argument('output_name', help='name of combined output file')
     parser.add_argument('--flag', help='flag to use for data points', default=1, type=int)
