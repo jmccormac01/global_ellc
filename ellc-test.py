@@ -2,6 +2,8 @@
 To do:
     add another set of subplots for the data-model residuals
 """
+import matplotlib
+matplotlib.use('QT5Agg')
 import glob as g
 import ellc
 import matplotlib.pyplot as plt
@@ -25,8 +27,8 @@ f_s = np.sqrt(ecc)*np.sin(w*np.pi/180.)
 f_c = np.sqrt(ecc)*np.cos(w*np.pi/180.)
 
 # import data and work out t_zero
-data_dir = '/Users/James/Documents/EBLMS/J23431841/'
-filelist = g.glob('NITES_J234318.41_20120829_Clear_F1*')
+data_dir = '/Users/jmcc/Dropbox/EBLMS/J23431841/'
+filelist = g.glob('{}/NITES_J234318.41_20120829_Clear_F1*'.format(data_dir))
 
 # lon, lat, size, fr
 spot_config = [[40], [-11.25], [10], [0.5]]
@@ -39,8 +41,7 @@ for i in range(0, len(epochs)):
 fig, ax = plt.subplots(len(filelist)+1, figsize=(10,10))
 c = 0
 for data_file in filelist:
-    input_file = '{0:s}{1:s}'.format(data_dir, data_file)
-    t, f, e = np.loadtxt(input_file, usecols=[2, 3, 4], unpack=True)
+    t, f, e = np.loadtxt(data_file, usecols=[2, 3, 4], unpack=True)
 
     diff = abs(epochs - np.average(t))
     diff_min = np.where(diff == min(diff))
