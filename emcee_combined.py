@@ -213,62 +213,56 @@ if __name__ == "__main__":
                                                             nwalkers,
                                                             label))
 
+    # calculate the most likely set of parameters ###
+    # get user to input the burnin period, after they
+    # have seen the time series of each parameter
+    burnin = int(raw_input('Enter burnin period: '))
+    samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
+
+    # most likely set of parameters
+    radius_1 = np.median(samples[:, 0])
+    radius_2 = np.median(samples[:, 1])
+    incl = np.median(samples[:, 2])
+    t0 = np.median(samples[:, 3])
+    period = np.median(samples[:, 4])
+    ecc = np.median(samples[:, 5])
+    omega = np.median(samples[:, 6])
+    a = np.median(samples[:, 7])
+    ldc_1_1 = np.median(samples[:, 8])
+    ldc_1_2 = np.median(samples[:, 9])
+
+    print('radius_1 = {} ± {}'.format(radius_1, np.std(samples[:, 0])))
+    print('radius_2 = {} ± {}'.format(radius_2, np.std(samples[:, 1])))
+    print('incl = {} ± {}'.format(incl, np.std(samples[:, 2])))
+    print('t0 = {} ± {}'.format(t0, np.std(samples[:, 3])))
+    print('period = {} ± {}'.format(period, np.std(samples[:, 4])))
+    print('ecc = {} ± {}'.format(ecc, np.std(samples[:, 5])))
+    print('omega = {} ± {}'.format(omega, np.std(samples[:, 6])))
+    print('a = {} ± {}'.format(a, np.std(samples[:, 7])))
+    print('ldc_1_1 = {} ± {}'.format(ldc_1, np.std(samples[:, 8])))
+    print('ldc_1_2 = {} ± {}'.format(ldc_1, np.std(samples[:, 9])))
+
+    # Plot triangle plot
+    fig = corner.corner(samples,
+                        labels=["$radius_1$",
+                                "$radius_2$",
+                                "$incl$",
+                                "$t0$",
+                                "$period$",
+                                "$ecc$",
+                                "$omega$",
+                                "$a$",
+                                "$ldc_1_1$",
+                                "$ldc_1_2$"],
+                        truths=initial,
+                        plot_contours=False)
+    fig.savefig('corner_{}steps_{}walkers.png'.format(nsteps, nwalkers))
+    fig.clf()
+
     # test this plotting stuff later when mcmc runs ok
     # FUNCTION CALLS BELOW HERE NEED FIXING!!!!
     cont = 0
     if cont > 0:
-        ###################################################
-        ### Calculate the most likely set of parameters ###
-        ###################################################
-
-        # get user to input the burnin period, after they
-        # have seen the time series of each parameter
-        burnin = int(raw_input('Enter burnin period: '))
-        samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
-
-        # most likely set of parameters
-        radius_1 = np.median(samples[:, 0])
-        radius_2 = np.median(samples[:, 1])
-        sbratio = np.median(samples[:, 2])
-        incl = np.median(samples[:, 3])
-        t0 = np.median(samples[:, 4])
-        period = np.median(samples[:, 5])
-        f_c = np.median(samples[:, 6])
-        f_s = np.median(samples[:, 7])
-        a = np.median(samples[:, 8])
-        ldc_1 = np.median(samples[:, 10])
-
-        print 'radius_1 = ', radius_1, ' +/- ', np.std(samples[:, 0])
-        print 'radius_2 = ', radius_2, ' +/- ', np.std(samples[:, 1])
-        print 'sbratio = ', sbratio, ' +/- ', np.std(samples[:, 2])
-        print 'incl = ', incl, ' +/- ', np.std(samples[:, 3])
-        print 't0 = ', t0, ' +/- ', np.std(samples[:, 4])
-        print 'period = ', period, ' +/- ', np.std(samples[:, 5])
-        print 'f_c = ', f_c, ' +/- ', np.std(samples[:, 6])
-        print 'f_s = ', f_s, ' +/- ', np.std(samples[:, 7])
-        print 'a = ', a, ' +/- ', np.std(samples[:, 8])
-        print 'ldc_1 = ', ldc_1, ' +/- ', np.std(samples[:, 10])
-
-        ##########################
-        ### Plot triangle plot ###
-        ##########################
-
-        fig = corner.corner(samples,
-                            labels=["$radius_1$",
-                                    "$radius_2$",
-                                    "$sbratio$",
-                                    "$incl$",
-                                    "$t0$",
-                                    "$period$",
-                                    "$f_c$",
-                                    "$f_s$",
-                                    "$a$",
-                                    "$ldc_1$"],
-                            truths=initial,
-                            plot_contours=False)
-        plt.savefig('corner_{}steps_{}walkers.png'.format(nsteps, nwalkers))
-        fig.clf()
-
         ##############################################################
         ### Take most likely set of parameters and plot the models ###
         ##############################################################
