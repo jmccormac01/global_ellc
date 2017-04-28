@@ -1,13 +1,23 @@
+# -*- coding: latin-1 -*-
+"""
+ToDo:
+    1. Need to generalise how to handle fixed parameters and
+       generalise how to handle the priors. Get ideas from
+       ellc emcee exmaple
+    2. Output the chains so they can be plotted quickly if a
+       file exists already
+"""
 import matplotlib
 matplotlib.use('QT5Agg')
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
 import numpy as np
 import emcee
 import corner
 import ellc
 
 # pylint: disable=invalid-name
+# pylint: disable=unused-variable
+# pylint: disable=no-member
 # pylint: disable=redefined-outer-name
 # pylint: disable=superfluous-parens
 
@@ -40,7 +50,7 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
 # takes in the binary parameters and returns an ellc fit
 # for the radial velocity curve
 def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
-                   sbratio, incl, f_s, f_c, a, q):
+                   sbratio, incl, f_s, f_c, a, q, v_systemic):
     """
     Add docstring
     """
@@ -59,6 +69,8 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
                      grid_2='default',
                      f_c=f_c,
                      f_s=f_s)
+    # account for the systemic
+    rv1 = rv1 + v_systemic
     return rv1
 
 def lnprior(theta):
@@ -66,30 +78,39 @@ def lnprior(theta):
     Needs generalising for priors
 
     These are set for J234318.41
+
+    Add docstring
     """
     radius_1, radius_2, incl, t0, \
-    period, ecc, omega, a, ldc_1_1, ldc_1_2 = theta
+    period, ecc, omega, a, ldc_1_1, ldc_1_2, \
+    v_systemic, q = theta
     # uniform priors for the parameters in theta
-    if 0.0025 < radius_1 < 0.05 and \
-        0.00035 < radius_2 < 0.004 and \
-        80 < incl <= 90 and \
-        ecc > 0 and \
-        0 <= omega < 360:
+    if 0.02 <= radius_1 <= 0.04 and \
+        0.003 < radius_2 < 0.007 and \
+        88 < incl <= 90 and \
+        0.0 <= ecc <= 0.2 and \
+        30.0 <= a <= 33.0 and \
+        75 <= omega < 80 and \
+        -20 >= v_systemic >= -30 and \
+        0.0624 < q < 0.1624:
         return 0.0
     else:
         return -np.inf
 
 def lnlike(theta, x_lc, y_lc, yerr_lc, x_rv, y_rv, yerr_rv):
+    """
+    Add docstring
+    """
     # unpack theta and pass parms to model
     radius_1, radius_2, incl, t0, period, \
-        ecc, omega, a, ldc_1_1, ldc_1_2 = theta
+    ecc, omega, a, ldc_1_1, ldc_1_2, \
+    v_systemic, q = theta
 
     # set the two ldcs into a list for ellc
     ldcs_1 = [ldc_1_1, ldc_1_2]
 
     # fixed parameters
     sbratio = 0.0
-    q = 0.1124
 
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
@@ -124,7 +145,8 @@ def lnlike(theta, x_lc, y_lc, yerr_lc, x_rv, y_rv, yerr_rv):
                               q=q,
                               incl=incl,
                               f_s=f_s,
-                              f_c=f_c)
+                              f_c=f_c,
+                              v_systemic=v_systemic)
     if True in np.isnan(model_rv):
         lnlike_rv = -np.inf
     else:
@@ -137,6 +159,9 @@ def lnlike(theta, x_lc, y_lc, yerr_lc, x_rv, y_rv, yerr_rv):
     return lnlike
 
 def lnprob(theta, x_lc, y_lc, yerr_lc, x_rv, y_rv, yerr_rv):
+    """
+    Add docstring
+    """
     lp = lnprior(theta)
     if not np.isfinite(lp):
         return -np.inf
@@ -144,18 +169,19 @@ def lnprob(theta, x_lc, y_lc, yerr_lc, x_rv, y_rv, yerr_rv):
 
 if __name__ == "__main__":
     # initial guesses of the parameters
-    in_radius_1 = 0.0313     #solar radii
-    in_radius_2 = 0.00465    #solar radii
+    in_radius_1 = 0.0320     #solar radii
+    in_radius_2 = 0.0048    #solar radii
     in_sbratio = 0.0         # fixed = set in lnlike
-    in_q = 0.1124            # fixed = set in lnlike
-    in_incl = 89.0
-    in_t0 = 2456457.89050760
-    in_period = 16.95352694
-    in_ecc = 0.1
-    in_omega = 77.0
-    in_a = 31.978            #solar radii
+    in_q = 0.1134            # fixed = set in lnlike
+    in_incl = 89.55
+    in_t0 = 2453592.7443
+    in_period = 16.95350
+    in_ecc = 0.16
+    in_omega = 77.5
+    in_a = 31.2            #solar radii
     in_ldc_1_1 = 0.1
     in_ldc_1_2 = 0.3
+    in_v_systemic = -25.0
     # list of initial guesses
     initial = [in_radius_1,
                in_radius_2,
@@ -166,29 +192,32 @@ if __name__ == "__main__":
                in_omega,
                in_a,
                in_ldc_1_1,
-               in_ldc_1_2]
+               in_ldc_1_2,
+               in_v_systemic,
+               in_q]
     # used in plotting
     parameters = ['r1', 'r2', 'inc', 'T0',
                   'P', 'ecc', 'omega', 'a',
-                  'ldc1', 'ldc2']
+                  'ldc1', 'ldc2', 'v_sys', 'q']
     # set up the weights for the initialisation
-    weights = [5e-4, 5e-4, 2e-4, 1e-4, 5e-4, 5e-4, 1e-4, 1e-4, 1e-4, 1e-4]
+    # these weights are used to scattter the walkers
+    # if using a prior make sure they are not scattered
+    # outside the range of the prior
+    weights = [5e-4, 5e-4, 1e-2, 1e-3, 5e-4, 5e-2,
+               1e-1, 1e-1, 1e-3, 1e-3, 1e-1, 1e-3]
     # check the lists are the same length
     assert len(initial) == len(parameters) == len(weights)
 
-    ############
-    ### MCMC ###
-    ############
-
     # grab the lc and rv data for fitting
-    lc_file = '/Users/jmcc/Dropbox/EBLMS/J23431841/J234318.41_nospots.dat'
+    #lc_file = '/Users/jmcc/Dropbox/EBLMS/J23431841/J234318.41_nospots.dat'
+    lc_file = '/Users/jmcc/Dropbox/EBLMS/J23431841/NITES_J234318.41_20131010_Clear_F2.lc.txt'
     rv_file = '/Users/jmcc/Dropbox/EBLMS/J23431841/J234318.41_NOT.rv'
-    x_lc, y_lc, yerr_lc = np.loadtxt(lc_file, usecols=[0, 1, 2], unpack=True)
+    x_lc, y_lc, yerr_lc = np.loadtxt(lc_file, usecols=[2, 3, 4], unpack=True)
     x_rv, y_rv, yerr_rv = np.loadtxt(rv_file, usecols=[0, 1, 2], unpack=True)
 
     # set up the sampler
     ndim = len(initial)
-    nwalkers = 3*len(initial)
+    nwalkers = 4*len(initial)
     nsteps = 2000
     # set up the starting positions
     pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
@@ -230,6 +259,8 @@ if __name__ == "__main__":
     a = np.median(samples[:, 7])
     ldc_1_1 = np.median(samples[:, 8])
     ldc_1_2 = np.median(samples[:, 9])
+    v_systemic = np.median(samples[:, 10])
+    q = np.median(samples[:, 11])
 
     print('radius_1 = {} ± {}'.format(radius_1, np.std(samples[:, 0])))
     print('radius_2 = {} ± {}'.format(radius_2, np.std(samples[:, 1])))
@@ -239,8 +270,10 @@ if __name__ == "__main__":
     print('ecc = {} ± {}'.format(ecc, np.std(samples[:, 5])))
     print('omega = {} ± {}'.format(omega, np.std(samples[:, 6])))
     print('a = {} ± {}'.format(a, np.std(samples[:, 7])))
-    print('ldc_1_1 = {} ± {}'.format(ldc_1, np.std(samples[:, 8])))
-    print('ldc_1_2 = {} ± {}'.format(ldc_1, np.std(samples[:, 9])))
+    print('ldc_1_1 = {} ± {}'.format(ldc_1_1, np.std(samples[:, 8])))
+    print('ldc_1_2 = {} ± {}'.format(ldc_1_2, np.std(samples[:, 9])))
+    print('v_systemic = {} ± {}'.format(v_systemic, np.std(samples[:, 10])))
+    print('q = {} ± {}'.format(q, np.std(samples[:, 11])))
 
     # Plot triangle plot
     fig = corner.corner(samples,
@@ -252,74 +285,69 @@ if __name__ == "__main__":
                                 "$ecc$",
                                 "$omega$",
                                 "$a$",
-                                "$ldc_1_1$",
-                                "$ldc_1_2$"],
+                                "$ldc1_1$",
+                                "$ldc1_2$",
+                                "$v_sys$",
+                                "$q$"],
                         truths=initial,
                         plot_contours=False)
     fig.savefig('corner_{}steps_{}walkers.png'.format(nsteps, nwalkers))
     fig.clf()
 
-    # test this plotting stuff later when mcmc runs ok
-    # FUNCTION CALLS BELOW HERE NEED FIXING!!!!
-    cont = 0
-    if cont > 0:
-        ##############################################################
-        ### Take most likely set of parameters and plot the models ###
-        ##############################################################
+    # take most likely set of parameters and plot the models
+    # make a dense mesh of time points for the lcs and RVs
+    # this is done in phase space for simplicity,
+    # i.e. P = 1 and T0 = 0.0 in model
+    x_model = np.linspace(-0.5, 0.5, 1000)
 
-        # prep for plotting
-        t_model = np.linspace(1605, 1635, 10000)
+    # calculate final models
+    f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
+    f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
+    ldcs_1 = [ldc_1_1, ldc_1_2]
+    final_lc_model = light_curve_model(t_obs=x_model,
+                                       t0=0.0,
+                                       period=1.0,
+                                       radius_1=radius_1,
+                                       radius_2=radius_2,
+                                       sbratio=in_sbratio,
+                                       a=a,
+                                       q=q,
+                                       incl=incl,
+                                       f_s=f_s,
+                                       f_c=f_c,
+                                       ldc_1=ldcs_1)
+    final_rv_model = rv_curve_model(t_obs=x_model,
+                                    t0=0.0,
+                                    period=1.0,
+                                    radius_1=radius_1,
+                                    radius_2=radius_2,
+                                    sbratio=in_sbratio,
+                                    a=a,
+                                    q=q,
+                                    incl=incl,
+                                    f_s=f_s,
+                                    f_c=f_c,
+                                    v_systemic=v_systemic)
 
-        # calculate final models
-        lc_model = light_curve_model(x_lc, t0, period, radius_1,
-                                     radius_2, sbratio, incl, f_c,
-                                     f_s, ldc_1)
-        rv_model = rv_curve_model(t_model, t0, period, f_c, f_s, a)
+    # phase the original flattened data using the
+    # calculated t0 and P
+    phase_lc = ((x_lc - t0)/period)%1
+    phase_rv = ((x_rv - t0)/period)%1
 
-        # phase the original flattened data using the calculated t0 and period values
-        Phase, Phase_index, bin_phases, bin_means, \
-        bin_error = phase_curve(planet='KOI-1741', t0=t0, period=period, step_size=2)
-
-        # subplot 1 - For the light curve
-        fig = plt.figure()
-        gs = gridspec.GridSpec(3, 3)
-
-        ax1 = fig.add_subplot(gs[0, 0:])
-        plt.errorbar(bin_phases, bin_means, yerr=bin_error, fmt='r.')
-        plt.plot(Phase, lc_model[Phase_index], 'b')
-        plt.errorbar(bin_phases-1, bin_means, yerr=bin_error, fmt='r.')
-        plt.plot(Phase-1, lc_model[Phase_index], 'b')
-
-        plt.xlabel('Phase')
-        plt.ylabel('Relative Flux')
-
-        # subplot 2 - For the primary eclipse (zoom in)
-        ax2 = fig.add_subplot(gs[1, 0])
-        plt.errorbar(bin_phases, bin_means, yerr=bin_error, fmt='r.')
-        plt.plot(Phase, lc_model[Phase_index], 'b')
-        plt.errorbar(bin_phases-1, bin_means, yerr=bin_error, fmt='r.')
-        plt.plot(Phase-1, lc_model[Phase_index], 'b')
-
-        plt.xlabel('Phase')
-        plt.ylabel('Relative Flux')
-
-        # subplot 3 - For the secondary eclipse (zoom in)
-        ax3 = fig.add_subplot(gs[2, 0])
-        plt.errorbar(bin_phases, bin_means, yerr=bin_error, fmt='r.')
-        plt.plot(Phase, lc_model[Phase_index], 'b')
-        plt.errorbar(bin_phases-1, bin_means, yerr=bin_error, fmt='r.')
-        plt.plot(Phase-1, lc_model[Phase_index], 'b')
-
-        plt.xlabel('Phase')
-        plt.ylabel('Relative Flux')
-
-        # subplot 4 - For the radial velocities
-        ax4 = fig.add_subplot(gs[1:, 1:])
-        plt.plot(t_model, rv1, 'b')
-        plt.errorbar(x_rv, y_rv, yerr=yerr_rv, fmt='r.')
-
-        plt.xlabel('Time [BJD-2454833]')
-        plt.ylabel('rv1 [km/s]')
-
-        plt.savefig('chain_{}steps_{}walkers_models.png'.format(nsteps, nwalkers))
-        fig.clf()
+    # subplot 1 - For the light curve
+    fig, ax = plt.subplots(2, 1, figsize=(10, 10))
+    # transits
+    ax[0].plot(phase_lc, y_lc, 'k.')
+    ax[0].plot(phase_lc-1, y_lc, 'k.')
+    ax[0].plot(x_model, final_lc_model, 'r-', lw=2)
+    ax[0].set_xlim(-0.05, 0.05)
+    ax[0].set_ylim(0.96, 1.02)
+    ax[0].set_xlabel('Orbital Phase')
+    ax[0].set_ylabel('Relative Flux')
+    # rvs
+    ax[1].plot(phase_rv, y_rv, 'k.')
+    ax[1].plot(x_model, final_rv_model, 'r-', lw=2)
+    ax[1].set_xlim(0, 1)
+    ax[1].set_xlabel('Orbital Phase')
+    ax[1].set_ylabel('Radial Velocity')
+    fig.savefig('chain_{}steps_{}walkers_fitted_models.png'.format(nsteps, nwalkers))
