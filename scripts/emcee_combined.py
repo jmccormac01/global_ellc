@@ -89,10 +89,10 @@ def lnprior(theta):
         0.003 < radius_2 < 0.007 and \
         88 < incl <= 90 and \
         0.0 <= ecc <= 0.2 and \
-        30.0 <= a <= 33.0 and \
+        30.0 <= a <= 35.0 and \
         75 <= omega < 80 and \
-        -20 >= v_systemic >= -30 and \
-        0.0624 < q < 0.1624:
+        -15 >= v_systemic >= -25 and \
+        0.05 < q < 0.145:
         return 0.0
     else:
         return -np.inf
@@ -169,19 +169,19 @@ def lnprob(theta, x_lc, y_lc, yerr_lc, x_rv, y_rv, yerr_rv):
 
 if __name__ == "__main__":
     # initial guesses of the parameters
-    in_radius_1 = 0.0320     #solar radii
-    in_radius_2 = 0.0048    #solar radii
-    in_sbratio = 0.0         # fixed = set in lnlike
-    in_q = 0.1134            # fixed = set in lnlike
+    in_radius_1 = 0.0305      #solar radii
+    in_radius_2 = 0.004825    #solar radii
+    in_sbratio = 0.0          # fixed = set in lnlike
+    in_q = 0.0957             # fixed = set in lnlike
     in_incl = 89.55
-    in_t0 = 2453592.7443
-    in_period = 16.95350
-    in_ecc = 0.16
-    in_omega = 77.5
-    in_a = 31.2            #solar radii
-    in_ldc_1_1 = 0.1
-    in_ldc_1_2 = 0.3
-    in_v_systemic = -25.0
+    in_t0 = 2453592.73266
+    in_period = 16.953598
+    in_ecc = 0.1597
+    in_omega = 78.418
+    in_a = 32.05           #solar radii
+    in_ldc_1_1 = 0.446
+    in_ldc_1_2 = 0.177
+    in_v_systemic = -21.236
     # list of initial guesses
     initial = [in_radius_1,
                in_radius_2,
@@ -243,7 +243,7 @@ if __name__ == "__main__":
                                                             label))
 
     # calculate the most likely set of parameters ###
-    # get user to input the burnin period, after they
+    # get user to input the burni. period, after they
     # have seen the time series of each parameter
     burnin = int(raw_input('Enter burnin period: '))
     samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
@@ -299,8 +299,7 @@ if __name__ == "__main__":
     # this is done in phase space for simplicity,
     # i.e. P = 1 and T0 = 0.0 in model
     x_model = np.linspace(-0.5, 0.5, 1000)
-
-    # calculate final models
+    x_rv_model = np.linspace(t0, t0+period, 1000)
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
     ldcs_1 = [ldc_1_1, ldc_1_2]
@@ -316,9 +315,9 @@ if __name__ == "__main__":
                                        f_s=f_s,
                                        f_c=f_c,
                                        ldc_1=ldcs_1)
-    final_rv_model = rv_curve_model(t_obs=x_model,
-                                    t0=0.0,
-                                    period=1.0,
+    final_rv_model = rv_curve_model(t_obs=x_rv_model,
+                                    t0=t0,
+                                    period=period,
                                     radius_1=radius_1,
                                     radius_2=radius_2,
                                     sbratio=in_sbratio,
@@ -329,24 +328,20 @@ if __name__ == "__main__":
                                     f_c=f_c,
                                     v_systemic=v_systemic)
 
-    # phase the original flattened data using the
-    # calculated t0 and P
     phase_lc = ((x_lc - t0)/period)%1
     phase_rv = ((x_rv - t0)/period)%1
+    phase_rv_model = ((x_rv_model-t0)/period)%1
 
-    # subplot 1 - For the light curve
     fig, ax = plt.subplots(2, 1, figsize=(10, 10))
-    # transits
     ax[0].plot(phase_lc, y_lc, 'k.')
     ax[0].plot(phase_lc-1, y_lc, 'k.')
     ax[0].plot(x_model, final_lc_model, 'r-', lw=2)
-    ax[0].set_xlim(-0.05, 0.05)
+    ax[0].set_xlim(-0.02, 0.02)
     ax[0].set_ylim(0.96, 1.02)
     ax[0].set_xlabel('Orbital Phase')
     ax[0].set_ylabel('Relative Flux')
-    # rvs
     ax[1].plot(phase_rv, y_rv, 'k.')
-    ax[1].plot(x_model, final_rv_model, 'r-', lw=2)
+    ax[1].plot(phase_rv_model, final_rv_model, 'r-', lw=2)
     ax[1].set_xlim(0, 1)
     ax[1].set_xlabel('Orbital Phase')
     ax[1].set_ylabel('Radial Velocity')
