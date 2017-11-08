@@ -3,7 +3,7 @@
 ToDo:
     1. Need to generalise how to handle fixed parameters and
        generalise how to handle the priors. Get ideas from
-       ellc emcee exmaple
+       ellc emcee example
     2. Output the chains so they can be plotted quickly if a
        file exists already
 """
@@ -169,18 +169,18 @@ def lnprob(theta, x_lc, y_lc, yerr_lc, x_rv, y_rv, yerr_rv):
 
 if __name__ == "__main__":
     # initial guesses of the parameters
-    in_radius_1 = 0.0305      #solar radii
-    in_radius_2 = 0.004825    #solar radii
+    in_radius_1 = 0.029654      #solar radii
+    in_radius_2 = 0.004642    #solar radii
     in_sbratio = 0.0          # fixed = set in lnlike
-    in_q = 0.0957             # fixed = set in lnlike
+    in_q = 0.0949             # fixed = set in lnlike
     in_incl = 89.55
-    in_t0 = 2453592.73266
-    in_period = 16.953598
-    in_ecc = 0.1597
-    in_omega = 78.418
-    in_a = 32.05           #solar radii
-    in_ldc_1_1 = 0.446
-    in_ldc_1_2 = 0.177
+    in_t0 = 2453592.74628
+    in_period = 16.953520
+    in_ecc = 0.1598
+    in_omega = 78.49
+    in_a = 32.155           #solar radii
+    in_ldc_1_1 = 0.447
+    in_ldc_1_2 = 0.174
     in_v_systemic = -21.236
     # list of initial guesses
     initial = [in_radius_1,
@@ -208,17 +208,43 @@ if __name__ == "__main__":
     # check the lists are the same length
     assert len(initial) == len(parameters) == len(weights)
 
-    # grab the lc and rv data for fitting
-    #lc_file = '/Users/jmcc/Dropbox/EBLMS/J23431841/J234318.41_nospots.dat'
-    lc_file = '/Users/jmcc/Dropbox/EBLMS/J23431841/NITES_J234318.41_20131010_Clear_F2.lc.txt'
-    rv_file = '/Users/jmcc/Dropbox/EBLMS/J23431841/J234318.41_NOT.rv'
-    x_lc, y_lc, yerr_lc = np.loadtxt(lc_file, usecols=[2, 3, 4], unpack=True)
-    x_rv, y_rv, yerr_rv = np.loadtxt(rv_file, usecols=[0, 1, 2], unpack=True)
+    # READ IN THE DATA
+    datadir =  '/Users/jmcc/Dropbox/EBLMs/J23431841'
+    outdir = '{}/output'.format(datadir)
+    lc_files = ['NITES_J234318.41_20131010_Clear_F2.lc.txt',
+                'NITES_J234318.41_20141001_Clear_F1.lc.txt']
+    rv_files = ['J234318.41_NOT.rv']
+
+    # read in possible multiple lc files
+    x_lcs, y_lcs, yerr_lcs = [], [], []
+    for lc_file in lc_files:
+        x_lc, y_lc, yerr_lc = np.loadtxt('{}/{}'.format(datadir, lc_file),
+                                         usecols=[2, 3, 4], unpack=True)
+        x_lcs.append(x_lc)
+        y_lcs.append(y_lc)
+        yerr_lcs.append(yerr_lc)
+    # stack the final lcs into one array
+    x_lc = np.hstack(x_lcs)
+    y_lc = np.hstack(y_lcs)
+    yerr_lc = np.hstack(yerr_lcs)
+
+    # read in possible multiple rv files
+    x_rvs, y_rvs, yerr_rvs = [], [], []
+    for rv_file in rv_files:
+        x_rv, y_rv, yerr_rv = np.loadtxt('{}/{}'.format(datadir, rv_file),
+                                         usecols=[0, 1, 2], unpack=True)
+        x_rvs.append(x_rv)
+        y_rvs.append(y_rv)
+        yerr_rvs.append(yerr_rv)
+    # stack the final lcs into one array
+    x_rv = np.hstack(x_rvs)
+    y_rv = np.hstack(y_rvs)
+    yerr_rv = np.hstack(yerr_rvs)
 
     # set up the sampler
     ndim = len(initial)
-    nwalkers = 4*len(initial)
-    nsteps = 2000
+    nwalkers = 4*len(initial)*2
+    nsteps = 1000
     # set up the starting positions
     pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
 
@@ -238,9 +264,10 @@ if __name__ == "__main__":
         ax.axhline(initial_param, color="#888888", lw=2)
         ax.set_ylabel(label)
         ax.set_xlabel('step number')
-        fig.savefig('chain_{}steps_{}walkers_{}.png'.format(nsteps,
-                                                            nwalkers,
-                                                            label))
+        fig.savefig('{}/chain_{}steps_{}walkers_{}.png'.format(outdir,
+                                                               nsteps,
+                                                               nwalkers,
+                                                               label))
 
     # calculate the most likely set of parameters ###
     # get user to input the burni. period, after they
@@ -291,7 +318,7 @@ if __name__ == "__main__":
                                 "$q$"],
                         truths=initial,
                         plot_contours=False)
-    fig.savefig('corner_{}steps_{}walkers.png'.format(nsteps, nwalkers))
+    fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
     fig.clf()
 
     # take most likely set of parameters and plot the models
@@ -345,4 +372,6 @@ if __name__ == "__main__":
     ax[1].set_xlim(0, 1)
     ax[1].set_xlabel('Orbital Phase')
     ax[1].set_ylabel('Radial Velocity')
-    fig.savefig('chain_{}steps_{}walkers_fitted_models.png'.format(nsteps, nwalkers))
+    fig.savefig('{}/chain_{}steps_{}walkers_fitted_models.png'.format(outdir,
+                                                                      nsteps,
+                                                                      nwalkers))
