@@ -93,19 +93,19 @@ def lnprior(theta):
     v_sys1, v_sys2, v_sys3, q = theta
     # uniform priors for the parameters in theta
     if 0.02 <= radius_1 <= 0.04 and \
-        0.003 < radius_2 < 0.007 and \
+        0.002 < radius_2 < 0.007 and \
         88 < incl <= 90 and \
-        0.0 <= ecc <= 0.2 and \
-        30.0 <= a <= 35.0 and \
-        75 <= omega < 80 and \
+        0.1 <= ecc <= 0.2 and \
+        30.0 <= a <= 34.0 and \
+        70 <= omega < 90 and \
         1 <= lc1_s1 <= 15 and \
         0 <= lc1_l1 <= 90 and \
         -15 <= lc1_b1 <= 15 and \
-        0.1 <= lc1_f1 <= 0.9 and \
+        0.0 <= lc1_f1 <= 1.0 and \
         1 <= lc2_s1 <= 15 and \
         0 <= lc2_l1 <= 90 and \
         -15 <= lc2_b1 <= 15 and \
-        0.1 <= lc2_f1 <= 0.9 and \
+        0.0 <= lc2_f1 <= 1.0 and \
         -15 >= v_sys1 >= -25 and \
         -15 >= v_sys2 >= -25 and \
         -15 >= v_sys3 >= -25 and \
@@ -281,29 +281,29 @@ def lnprob(theta,
 
 if __name__ == "__main__":
     # initial guesses of the parameters
-    in_radius_1 = 0.029654      #solar radii
-    in_radius_2 = 0.004642    #solar radii
-    in_sbratio = 0.0          # fixed = set in lnlike
-    in_q = 0.0949             # fixed = set in lnlike
-    in_incl = 89.55
-    in_t0 = 2453592.74628
-    in_period = 16.953520
-    in_ecc = 0.1598
-    in_omega = 78.49
-    in_a = 32.155           #solar radii
-    in_ldc_1_1 = 0.447
-    in_ldc_1_2 = 0.174
-    in_lc1_l1 = 31.0 # lc1 spot params from initial fit on its own
-    in_lc1_b1 = -5.0
-    in_lc1_s1 = 6.0
-    in_lc1_f1 = 0.6
-    in_lc2_l1 = 34.0 # lc2 spot params from initial fit on its own
-    in_lc2_b1 = -5.0
-    in_lc2_s1 = 11.0
-    in_lc2_f1 = 0.87
-    in_v_sys1 = -21.236
-    in_v_sys2 = -21.236
-    in_v_sys3 = -21.236
+    in_radius_1 = 0.029010     #solar radii
+    in_radius_2 = 0.004530     #solar radii
+    in_sbratio = 0.0           # fixed = set in lnlike
+    in_q = 0.09904
+    in_incl = 89.564
+    in_t0 = 2453592.72423
+    in_period = 16.953634
+    in_ecc = 0.1467
+    in_omega = 79.98
+    in_a = 31.8           #solar radii
+    in_ldc_1_1 = 0.4428
+    in_ldc_1_2 = 0.1873
+    in_lc1_l1 = 31.008 # lc1 spot params from initial fit on its own
+    in_lc1_b1 = -4.95
+    in_lc1_s1 = 5.954
+    in_lc1_f1 = 0.899
+    in_lc2_l1 = 33.986 # lc2 spot params from initial fit on its own
+    in_lc2_b1 = -5.257
+    in_lc2_s1 = 11.033
+    in_lc2_f1 = 0.899
+    in_v_sys1 = -21.260
+    in_v_sys2 = -20.812
+    in_v_sys3 = -20.994
     # list of initial guesses
     initial = [in_radius_1,
                in_radius_2,
@@ -337,8 +337,8 @@ if __name__ == "__main__":
     # these weights are used to scattter the walkers
     # if using a prior make sure they are not scattered
     # outside the range of the prior
-    weights = [5e-4, 5e-4, 1e-2, 1e-3, 5e-4, 2.5e-2,
-               1e-1, 1e-1, 1e-3, 1e-3,
+    weights = [1e-4, 1e-4, 1e-2, 1e-3, 1e-4, 1e-3,
+               1e-1, 1e-2, 1e-3, 1e-3,
                1e-2, 1e-2, 1e-2, 1e-2,
                1e-2, 1e-2, 1e-2, 1e-2,
                1e-1, 1e-1, 1e-1, 1e-3]
