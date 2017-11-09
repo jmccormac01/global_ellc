@@ -9,6 +9,11 @@ ToDo:
     2. Output the chains so they can be plotted quickly if a
        file exists already
     3. Generalise how to spread out the walkers in the start
+
+J234318.41 ToDo:
+    1. Remove 1s in partial
+    2. Speak to people about bright spot (double check reductions?)
+    3. Fix systemic velocity offsets
 """
 import sys
 import matplotlib
