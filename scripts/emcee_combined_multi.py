@@ -9,11 +9,6 @@ ToDo:
     2. Output the chains so they can be plotted quickly if a
        file exists already
     3. Generalise how to spread out the walkers in the start
-
-J234318.41 ToDo:
-    1. Remove 1s in partial
-    2. Speak to people about bright spot (double check reductions?)
-    3. Fix systemic velocity offsets
 """
 import sys
 import matplotlib
@@ -50,8 +45,8 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
                        ld_1='quad',
                        shape_1='sphere',
                        shape_2='sphere',
-                       grid_1='default',
-                       grid_2='default',
+                       grid_1='sparse', # set these to default again later
+                       grid_2='sparse',
                        f_c=f_c,
                        f_s=f_s,
                        spots_1=spots_1,
@@ -104,13 +99,9 @@ def lnprior(theta):
         30.0 <= a <= 34.0 and \
         70 <= omega < 90 and \
         1 <= lc1_s1 <= 15 and \
-        0 <= lc1_l1 <= 90 and \
-        -15 <= lc1_b1 <= 15 and \
-        0.0 <= lc1_f1 <= 1.0 and \
+        0.0 <= lc1_f1 <= 3.0 and \
         1 <= lc2_s1 <= 15 and \
-        0 <= lc2_l1 <= 90 and \
-        -15 <= lc2_b1 <= 15 and \
-        0.0 <= lc2_f1 <= 1.0 and \
+        0.0 <= lc2_f1 <= 3.0 and \
         -15 >= v_sys1 >= -25 and \
         -15 >= v_sys2 >= -25 and \
         -15 >= v_sys3 >= -25 and \
@@ -449,6 +440,13 @@ if __name__ == "__main__":
     v_sys3 = np.median(samples[:, 20])
     q = np.median(samples[:, 21])
 
+
+    # correc the systematic velocities to the first one
+    v_sys_diff2 = v_sys1 - v_sys2
+    v_sys_diff3 = v_sys1 - v_sys3
+    #v_sys2_corr = v_sys2 + v_sys_diff2
+    #v_sys3_corr = v_sys3 + v_sys_diff3
+
     print('radius_1 = {} ± {}'.format(radius_1, np.std(samples[:, 0])))
     print('radius_2 = {} ± {}'.format(radius_2, np.std(samples[:, 1])))
     print('incl = {} ± {}'.format(incl, np.std(samples[:, 2])))
@@ -469,7 +467,9 @@ if __name__ == "__main__":
     print('lc2_f1 = {} ± {}'.format(lc2_f1, np.std(samples[:, 17])))
     print('v_sys1 = {} ± {}'.format(v_sys1, np.std(samples[:, 18])))
     print('v_sys2 = {} ± {}'.format(v_sys2, np.std(samples[:, 19])))
+    print('v_sys2_diff = {}'.format(v_sys2_diff))
     print('v_sys3 = {} ± {}'.format(v_sys3, np.std(samples[:, 20])))
+    print('v_sys3_diff = {}'.format(v_sys3_diff))
     print('q = {} ± {}'.format(q, np.std(samples[:, 21])))
 
     # Plot triangle plot
@@ -594,8 +594,8 @@ if __name__ == "__main__":
     ax[2].set_xlabel('Orbital Phase')
     ax[2].set_ylabel('Relative Flux')
     ax[3].plot(phase_rv1, y_rv1, 'k.')
-    ax[3].plot(phase_rv2, y_rv2, 'g.')
-    ax[3].plot(phase_rv3, y_rv3, 'b.')
+    ax[3].plot(phase_rv2, y_rv2 + v_sys_diff2, 'g.')
+    ax[3].plot(phase_rv3, y_rv3 + v_sys_diff3, 'b.')
     ax[3].plot(phase_rv_model, final_rv_model, 'r-', lw=2)
     ax[3].set_xlim(0, 1)
     ax[3].set_xlabel('Orbital Phase')
