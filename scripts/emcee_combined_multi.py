@@ -6,9 +6,10 @@ ToDo:
     1. Need to generalise how to handle fixed parameters and
        generalise how to handle the priors. Get ideas from
        ellc emcee example
-    2. Output the chains so they can be plotted quickly if a
+    2. Generalise the handling of multiple instruments
+    3. Output the chains so they can be plotted quickly if a
        file exists already
-    3. Generalise how to spread out the walkers in the start
+    4. Generalise how to spread out the walkers in the start
 """
 import sys
 import matplotlib
@@ -88,9 +89,9 @@ def lnprior(theta):
     """
     radius_1, radius_2, incl, t0, \
     period, ecc, omega, a, ldc_1_1, ldc_1_2, \
-    lc1_l1, lc1_b1, lc1_s1, lc1_f1, \
-    lc2_l1, lc2_b1, lc2_s1, lc2_f1, \
     v_sys1, v_sys2, v_sys3, q = theta
+    #lc1_l1, lc1_b1, lc1_s1, lc1_f1, \
+    #lc2_l1, lc2_b1, lc2_s1, lc2_f1, \
     # uniform priors for the parameters in theta
     if 0.02 <= radius_1 <= 0.04 and \
         0.002 < radius_2 < 0.007 and \
@@ -98,14 +99,14 @@ def lnprior(theta):
         0.1 <= ecc <= 0.2 and \
         30.0 <= a <= 34.0 and \
         70 <= omega < 90 and \
-        1 <= lc1_s1 <= 15 and \
-        0.0 <= lc1_f1 <= 3.0 and \
-        1 <= lc2_s1 <= 15 and \
-        0.0 <= lc2_f1 <= 3.0 and \
         -15 >= v_sys1 >= -25 and \
         -15 >= v_sys2 >= -25 and \
         -15 >= v_sys3 >= -25 and \
         0.05 < q < 0.145:
+        #1 <= lc1_s1 <= 15 and \
+        #0.0 <= lc1_f1 <= 3.0 and \
+        #1 <= lc2_s1 <= 15 and \
+        #0.0 <= lc2_f1 <= 3.0 and \
         return 0.0
     else:
         return -np.inf
@@ -134,21 +135,22 @@ def lnlike_sub(data_type, model, data, error):
     return lnlike
 
 def lnlike(theta,
-           x_lc1, y_lc1, yerr_lc1,
-           x_lc2, y_lc2, yerr_lc2,
            x_lc3, y_lc3, yerr_lc3,
            x_rv1, y_rv1, yerr_rv1,
            x_rv2, y_rv2, yerr_rv2,
            x_rv3, y_rv3, yerr_rv3):
     """
     Work out the log likelihood for the proposed model
+
+           x_lc1, y_lc1, yerr_lc1,
+           x_lc2, y_lc2, yerr_lc2,
     """
     # unpack theta and pass parms to model
     radius_1, radius_2, incl, t0, period, \
     ecc, omega, a, ldc_1_1, ldc_1_2, \
-    lc1_l1, lc1_b1, lc1_s1, lc1_f1, \
-    lc2_l1, lc2_b1, lc2_s1, lc2_f1, \
     v_sys1, v_sys2, v_sys3, q = theta
+    #lc1_l1, lc1_b1, lc1_s1, lc1_f1, \
+    #lc2_l1, lc2_b1, lc2_s1, lc2_f1, \
 
     # set the two ldcs into a list for ellc
     ldcs_1 = [ldc_1_1, ldc_1_2]
@@ -159,36 +161,36 @@ def lnlike(theta,
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
 
     # light curve 1 likelihood function - spotty
-    model_lc1 = light_curve_model(t_obs=x_lc1,
-                                  t0=t0,
-                                  period=period,
-                                  radius_1=radius_1,
-                                  radius_2=radius_2,
-                                  sbratio=sbratio,
-                                  a=a,
-                                  q=q,
-                                  incl=incl,
-                                  f_s=f_s,
-                                  f_c=f_c,
-                                  ldc_1=ldcs_1,
-                                  spots_1=[[lc1_l1], [lc1_b1], [lc1_s1], [lc1_f1]])
-    lnlike_lc1 = lnlike_sub('phot', model_lc1, y_lc1, yerr_lc1)
+    #model_lc1 = light_curve_model(t_obs=x_lc1,
+    #                              t0=t0,
+    #                              period=period,
+    #                              radius_1=radius_1,
+    #                              radius_2=radius_2,
+    #                              sbratio=sbratio,
+    #                              a=a,
+    #                              q=q,
+    #                              incl=incl,
+    #                              f_s=f_s,
+    #                              f_c=f_c,
+    #                              ldc_1=ldcs_1,
+    #                              spots_1=[[lc1_l1], [lc1_b1], [lc1_s1], [lc1_f1]])
+    #lnlike_lc1 = lnlike_sub('phot', model_lc1, y_lc1, yerr_lc1)
 
     # light curve 2 likelihood function - spotty
-    model_lc2 = light_curve_model(t_obs=x_lc2,
-                                  t0=t0,
-                                  period=period,
-                                  radius_1=radius_1,
-                                  radius_2=radius_2,
-                                  sbratio=sbratio,
-                                  a=a,
-                                  q=q,
-                                  incl=incl,
-                                  f_s=f_s,
-                                  f_c=f_c,
-                                  ldc_1=ldcs_1,
-                                  spots_1=[[lc2_l1], [lc2_b1], [lc2_s1], [lc2_f1]])
-    lnlike_lc2 = lnlike_sub('phot', model_lc2, y_lc2, yerr_lc2)
+    #model_lc2 = light_curve_model(t_obs=x_lc2,
+    #                              t0=t0,
+    #                              period=period,
+    #                              radius_1=radius_1,
+    #                              radius_2=radius_2,
+    #                              sbratio=sbratio,
+    #                              a=a,
+    #                              q=q,
+    #                              incl=incl,
+    #                              f_s=f_s,
+    #                              f_c=f_c,
+    #                              ldc_1=ldcs_1,
+    #                              spots_1=[[lc2_l1], [lc2_b1], [lc2_s1], [lc2_f1]])
+    #lnlike_lc2 = lnlike_sub('phot', model_lc2, y_lc2, yerr_lc2)
 
     # light curve 3 likelihood function - non-spotty
     model_lc3 = light_curve_model(t_obs=x_lc3,
@@ -251,25 +253,28 @@ def lnlike(theta,
     lnlike_rv3 = lnlike_sub('rv', model_rv3, y_rv3, yerr_rv3)
 
     # sum to get overall likelihood function
-    lnlike = lnlike_lc1 + lnlike_lc2 + lnlike_lc3 + lnlike_rv1 + lnlike_rv2 + lnlike_rv3
+    #lnlike = lnlike_lc1 + lnlike_lc2 + lnlike_lc3 + lnlike_rv1 + lnlike_rv2 + lnlike_rv3
+    lnlike = lnlike_lc3 + lnlike_rv1 + lnlike_rv2 + lnlike_rv3
     return lnlike
 
 def lnprob(theta,
-           x_lc1, y_lc1, yerr_lc1,
-           x_lc2, y_lc2, yerr_lc2,
            x_lc3, y_lc3, yerr_lc3,
            x_rv1, y_rv1, yerr_rv1,
            x_rv2, y_rv2, yerr_rv2,
            x_rv3, y_rv3, yerr_rv3):
     """
     Add docstring
+
+           x_lc1, y_lc1, yerr_lc1,
+           x_lc2, y_lc2, yerr_lc2,
     """
     lp = lnprior(theta)
     if not np.isfinite(lp):
         return -np.inf
+
+    #                   x_lc1, y_lc1, yerr_lc1,
+    #                   x_lc2, y_lc2, yerr_lc2,
     return lp + lnlike(theta,
-                       x_lc1, y_lc1, yerr_lc1,
-                       x_lc2, y_lc2, yerr_lc2,
                        x_lc3, y_lc3, yerr_lc3,
                        x_rv1, y_rv1, yerr_rv1,
                        x_rv2, y_rv2, yerr_rv2,
@@ -289,14 +294,14 @@ if __name__ == "__main__":
     in_a = 31.8           #solar radii
     in_ldc_1_1 = 0.4428
     in_ldc_1_2 = 0.1873
-    in_lc1_l1 = 31.008 # lc1 spot params from initial fit on its own
-    in_lc1_b1 = -4.95
-    in_lc1_s1 = 5.954
-    in_lc1_f1 = 0.899
-    in_lc2_l1 = 33.986 # lc2 spot params from initial fit on its own
-    in_lc2_b1 = -5.257
-    in_lc2_s1 = 11.033
-    in_lc2_f1 = 0.899
+    #in_lc1_l1 = 31.008 # lc1 spot params from initial fit on its own
+    #in_lc1_b1 = -4.95
+    #in_lc1_s1 = 5.954
+    #in_lc1_f1 = 0.899
+    #in_lc2_l1 = 33.986 # lc2 spot params from initial fit on its own
+    #in_lc2_b1 = -5.257
+    #in_lc2_s1 = 11.033
+    #in_lc2_f1 = 0.899
     in_v_sys1 = -21.260
     in_v_sys2 = -20.812
     in_v_sys3 = -20.994
@@ -311,33 +316,33 @@ if __name__ == "__main__":
                in_a,
                in_ldc_1_1,
                in_ldc_1_2,
-               in_lc1_l1,
-               in_lc1_b1,
-               in_lc1_s1,
-               in_lc1_f1,
-               in_lc2_l1,
-               in_lc2_b1,
-               in_lc2_s1,
-               in_lc2_f1,
                in_v_sys1,
                in_v_sys2,
                in_v_sys3,
                in_q]
+    #           in_lc1_l1,
+    #           in_lc1_b1,
+    #           in_lc1_s1,
+    #           in_lc1_f1,
+    #           in_lc2_l1,
+    #           in_lc2_b1,
+    #           in_lc2_s1,
+    #           in_lc2_f1,
     # used in plotting
     parameters = ['r1', 'r2', 'inc', 'T0', 'P', 'ecc',
                   'omega', 'a', 'ldc1', 'ldc2',
-                  'lc1_l1', 'lc1_b1', 'lc1_s1', 'lc1_f1',
-                  'lc2_l1', 'lc2_b1', 'lc2_s1', 'lc2_f1',
                   'v_sys1', 'v_sys2', 'v_sys3', 'q']
+    #              'lc1_l1', 'lc1_b1', 'lc1_s1', 'lc1_f1',
+    #              'lc2_l1', 'lc2_b1', 'lc2_s1', 'lc2_f1',
     # set up the weights for the initialisation
     # these weights are used to scattter the walkers
     # if using a prior make sure they are not scattered
     # outside the range of the prior
     weights = [1e-4, 1e-4, 1e-2, 1e-3, 1e-4, 1e-3,
                1e-1, 1e-2, 1e-3, 1e-3,
-               1e-2, 1e-2, 1e-2, 1e-2,
-               1e-2, 1e-2, 1e-2, 1e-2,
                1e-1, 1e-1, 1e-1, 1e-3]
+    #           1e-2, 1e-2, 1e-2, 1e-2,
+    #           1e-2, 1e-2, 1e-2, 1e-2,
     # check the lists are the same length
     assert len(initial) == len(parameters) == len(weights)
 
@@ -345,14 +350,14 @@ if __name__ == "__main__":
     datadir = '/Users/jmcc/Dropbox/EBLMs/J23431841'
     outdir = '{}/output'.format(datadir)
     # phot
-    lc1_file = 'NITES_J234318.41_20120829_Clear_F1.lc.txt'
-    lc2_file = 'NITES_J234318.41_20130923_Clear_F2.lc.txt'
+    #lc1_file = 'NITES_J234318.41_20120829_Clear_F1.lc.txt'
+    #lc2_file = 'NITES_J234318.41_20130923_Clear_F2.lc.txt'
     lc3_files = ['NITES_J234318.41_20131010_Clear_F2.lc.txt',
                  'NITES_J234318.41_20141001_Clear_F1.lc.txt']
-    x_lc1, y_lc1, yerr_lc1 = np.loadtxt('{}/{}'.format(datadir, lc1_file),
-                                        usecols=[2, 3, 4], unpack=True)
-    x_lc2, y_lc2, yerr_lc2 = np.loadtxt('{}/{}'.format(datadir, lc2_file),
-                                        usecols=[2, 3, 4], unpack=True)
+    #x_lc1, y_lc1, yerr_lc1 = np.loadtxt('{}/{}'.format(datadir, lc1_file),
+    #                                    usecols=[2, 3, 4], unpack=True)
+    #x_lc2, y_lc2, yerr_lc2 = np.loadtxt('{}/{}'.format(datadir, lc2_file),
+    #                                    usecols=[2, 3, 4], unpack=True)
     # read in multiple lc files that are to be treated the same
     # e.g. non-spotty in this case
     x_lc3, y_lc3, yerr_lc3 = [], [], []
@@ -386,12 +391,12 @@ if __name__ == "__main__":
     pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob,
-                                    args=(x_lc1, y_lc1, yerr_lc1,
-                                          x_lc2, y_lc2, yerr_lc2,
-                                          x_lc3, y_lc3, yerr_lc3,
+                                    args=(x_lc3, y_lc3, yerr_lc3,
                                           x_rv1, y_rv1, yerr_rv1,
                                           x_rv2, y_rv2, yerr_rv2,
                                           x_rv3, y_rv3, yerr_rv3))
+    #                                      x_lc1, y_lc1, yerr_lc1,
+    #                                      x_lc2, y_lc2, yerr_lc2,
 
     # run the production chain
     print("Running MCMC...")
@@ -427,25 +432,25 @@ if __name__ == "__main__":
     a = np.median(samples[:, 7])
     ldc_1_1 = np.median(samples[:, 8])
     ldc_1_2 = np.median(samples[:, 9])
-    lc1_l1 = np.median(samples[:, 10])
-    lc1_b1 = np.median(samples[:, 11])
-    lc1_s1 = np.median(samples[:, 12])
-    lc1_f1 = np.median(samples[:, 13])
-    lc2_l1 = np.median(samples[:, 14])
-    lc2_b1 = np.median(samples[:, 15])
-    lc2_s1 = np.median(samples[:, 16])
-    lc2_f1 = np.median(samples[:, 17])
-    v_sys1 = np.median(samples[:, 18])
-    v_sys2 = np.median(samples[:, 19])
-    v_sys3 = np.median(samples[:, 20])
-    q = np.median(samples[:, 21])
+    #lc1_l1 = np.median(samples[:, 10])
+    #lc1_b1 = np.median(samples[:, 11])
+    #lc1_s1 = np.median(samples[:, 12])
+    #lc1_f1 = np.median(samples[:, 13])
+    #lc2_l1 = np.median(samples[:, 14])
+    #lc2_b1 = np.median(samples[:, 15])
+    #lc2_s1 = np.median(samples[:, 16])
+    #lc2_f1 = np.median(samples[:, 17])
+    v_sys1 = np.median(samples[:, 10])
+    v_sys2 = np.median(samples[:, 11])
+    v_sys3 = np.median(samples[:, 12])
+    q = np.median(samples[:, 13])
 
 
     # correc the systematic velocities to the first one
-    v_sys_diff2 = v_sys1 - v_sys2
-    v_sys_diff3 = v_sys1 - v_sys3
-    #v_sys2_corr = v_sys2 + v_sys_diff2
-    #v_sys3_corr = v_sys3 + v_sys_diff3
+    v_sys2_diff = v_sys1 - v_sys2
+    v_sys3_diff = v_sys1 - v_sys3
+    #v_sys2_corr = v_sys2 + v_sys2_diff
+    #v_sys3_corr = v_sys3 + v_sys3_diff
 
     print('radius_1 = {} ± {}'.format(radius_1, np.std(samples[:, 0])))
     print('radius_2 = {} ± {}'.format(radius_2, np.std(samples[:, 1])))
@@ -457,20 +462,20 @@ if __name__ == "__main__":
     print('a = {} ± {}'.format(a, np.std(samples[:, 7])))
     print('ldc_1_1 = {} ± {}'.format(ldc_1_1, np.std(samples[:, 8])))
     print('ldc_1_2 = {} ± {}'.format(ldc_1_2, np.std(samples[:, 9])))
-    print('lc1_l1 = {} ± {}'.format(lc1_l1, np.std(samples[:, 10])))
-    print('lc1_b1 = {} ± {}'.format(lc1_b1, np.std(samples[:, 11])))
-    print('lc1_s1 = {} ± {}'.format(lc1_s1, np.std(samples[:, 12])))
-    print('lc1_f1 = {} ± {}'.format(lc1_f1, np.std(samples[:, 13])))
-    print('lc2_l1 = {} ± {}'.format(lc2_l1, np.std(samples[:, 14])))
-    print('lc2_b1 = {} ± {}'.format(lc2_b1, np.std(samples[:, 15])))
-    print('lc2_s1 = {} ± {}'.format(lc2_s1, np.std(samples[:, 16])))
-    print('lc2_f1 = {} ± {}'.format(lc2_f1, np.std(samples[:, 17])))
-    print('v_sys1 = {} ± {}'.format(v_sys1, np.std(samples[:, 18])))
-    print('v_sys2 = {} ± {}'.format(v_sys2, np.std(samples[:, 19])))
+    #print('lc1_l1 = {} ± {}'.format(lc1_l1, np.std(samples[:, 10])))
+    #print('lc1_b1 = {} ± {}'.format(lc1_b1, np.std(samples[:, 11])))
+    #print('lc1_s1 = {} ± {}'.format(lc1_s1, np.std(samples[:, 12])))
+    #print('lc1_f1 = {} ± {}'.format(lc1_f1, np.std(samples[:, 13])))
+    #print('lc2_l1 = {} ± {}'.format(lc2_l1, np.std(samples[:, 14])))
+    #print('lc2_b1 = {} ± {}'.format(lc2_b1, np.std(samples[:, 15])))
+    #print('lc2_s1 = {} ± {}'.format(lc2_s1, np.std(samples[:, 16])))
+    #print('lc2_f1 = {} ± {}'.format(lc2_f1, np.std(samples[:, 17])))
+    print('v_sys1 = {} ± {}'.format(v_sys1, np.std(samples[:, 10])))
+    print('v_sys2 = {} ± {}'.format(v_sys2, np.std(samples[:, 11])))
     print('v_sys2_diff = {}'.format(v_sys2_diff))
-    print('v_sys3 = {} ± {}'.format(v_sys3, np.std(samples[:, 20])))
+    print('v_sys3 = {} ± {}'.format(v_sys3, np.std(samples[:, 12])))
     print('v_sys3_diff = {}'.format(v_sys3_diff))
-    print('q = {} ± {}'.format(q, np.std(samples[:, 21])))
+    print('q = {} ± {}'.format(q, np.std(samples[:, 13])))
 
     # Plot triangle plot
     fig = corner.corner(samples,
@@ -484,20 +489,20 @@ if __name__ == "__main__":
                                 "$a$",
                                 "$ldc1_1$",
                                 "$ldc1_2$",
-                                "$lc1_l1$",
-                                "$lc1_b1$",
-                                "$lc1_s1$",
-                                "$lc1_f1$",
-                                "$lc2_l1$",
-                                "$lc2_b1$",
-                                "$lc2_s1$",
-                                "$lc2_f1$",
                                 "$v_sys1$",
                                 "$v_sys2$",
                                 "$v_sys3$",
                                 "$q$"],
                         truths=initial,
                         plot_contours=False)
+    #                            "$lc1_l1$",
+    #                            "$lc1_b1$",
+    #                            "$lc1_s1$",
+    #                            "$lc1_f1$",
+    #                            "$lc2_l1$",
+    #                            "$lc2_b1$",
+    #                            "$lc2_s1$",
+    #                            "$lc2_f1$",
     fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
     fig.clf()
 
@@ -512,32 +517,32 @@ if __name__ == "__main__":
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
     ldcs_1 = [ldc_1_1, ldc_1_2]
-    final_lc_model1 = light_curve_model(t_obs=x_model,
-                                        t0=0.0,
-                                        period=1.0,
-                                        radius_1=radius_1,
-                                        radius_2=radius_2,
-                                        sbratio=in_sbratio,
-                                        a=a,
-                                        q=q,
-                                        incl=incl,
-                                        f_s=f_s,
-                                        f_c=f_c,
-                                        ldc_1=ldcs_1,
-                                        spots_1=[[lc1_l1], [lc1_b1], [lc1_s1], [lc1_f1]])
-    final_lc_model2 = light_curve_model(t_obs=x_model,
-                                        t0=0.0,
-                                        period=1.0,
-                                        radius_1=radius_1,
-                                        radius_2=radius_2,
-                                        sbratio=in_sbratio,
-                                        a=a,
-                                        q=q,
-                                        incl=incl,
-                                        f_s=f_s,
-                                        f_c=f_c,
-                                        ldc_1=ldcs_1,
-                                        spots_1=[[lc2_l1], [lc2_b1], [lc2_s1], [lc2_f1]])
+    #final_lc_model1 = light_curve_model(t_obs=x_model,
+    #                                    t0=0.0,
+    #                                    period=1.0,
+    #                                    radius_1=radius_1,
+    #                                    radius_2=radius_2,
+    #                                    sbratio=in_sbratio,
+    #                                    a=a,
+    #                                    q=q,
+    #                                    incl=incl,
+    #                                    f_s=f_s,
+    #                                    f_c=f_c,
+    #                                    ldc_1=ldcs_1,
+    #                                    spots_1=[[lc1_l1], [lc1_b1], [lc1_s1], [lc1_f1]])
+    #final_lc_model2 = light_curve_model(t_obs=x_model,
+    #                                    t0=0.0,
+    #                                    period=1.0,
+    #                                    radius_1=radius_1,
+    #                                    radius_2=radius_2,
+    #                                    sbratio=in_sbratio,
+    #                                    a=a,
+    #                                    q=q,
+    #                                    incl=incl,
+    #                                    f_s=f_s,
+    #                                    f_c=f_c,
+    #                                    ldc_1=ldcs_1,
+    #                                    spots_1=[[lc2_l1], [lc2_b1], [lc2_s1], [lc2_f1]])
     final_lc_model3 = light_curve_model(t_obs=x_model,
                                         t0=0.0,
                                         period=1.0,
@@ -563,43 +568,43 @@ if __name__ == "__main__":
                                     f_c=f_c,
                                     v_sys=v_sys1)
 
-    phase_lc1 = ((x_lc1 - t0)/period)%1
-    phase_lc2 = ((x_lc2 - t0)/period)%1
+    #phase_lc1 = ((x_lc1 - t0)/period)%1
+    #phase_lc2 = ((x_lc2 - t0)/period)%1
     phase_lc3 = ((x_lc3 - t0)/period)%1
     phase_rv1 = ((x_rv1 - t0)/period)%1
     phase_rv2 = ((x_rv2 - t0)/period)%1
     phase_rv3 = ((x_rv3 - t0)/period)%1
     phase_rv_model = ((x_rv_model-t0)/period)%1
 
-    fig, ax = plt.subplots(4, 1, figsize=(15, 15))
-    ax[0].plot(phase_lc1, y_lc1, 'k.')
-    ax[0].plot(phase_lc1-1, y_lc1, 'k.')
-    ax[0].plot(x_model, final_lc_model1, 'r-', lw=2)
+    fig, ax = plt.subplots(2, 1, figsize=(15, 15))
+    #ax[0].plot(phase_lc1, y_lc1, 'k.')
+    #ax[0].plot(phase_lc1-1, y_lc1, 'k.')
+    #ax[0].plot(x_model, final_lc_model1, 'r-', lw=2)
+    #ax[0].set_xlim(-0.02, 0.02)
+    #ax[0].set_ylim(0.96, 1.02)
+    #ax[0].set_xlabel('Orbital Phase')
+    #ax[0].set_ylabel('Relative Flux')
+    #ax[1].plot(phase_lc2, y_lc2, 'k.')
+    #ax[1].plot(phase_lc2-1, y_lc2, 'k.')
+    #ax[1].plot(x_model, final_lc_model2, 'r-', lw=2)
+    #ax[1].set_xlim(-0.02, 0.02)
+    #ax[1].set_ylim(0.96, 1.02)
+    #ax[1].set_xlabel('Orbital Phase')
+    #ax[1].set_ylabel('Relative Flux')
+    ax[0].plot(phase_lc3, y_lc3, 'k.')
+    ax[0].plot(phase_lc3-1, y_lc3, 'k.')
+    ax[0].plot(x_model, final_lc_model3, 'g-', lw=2)
     ax[0].set_xlim(-0.02, 0.02)
     ax[0].set_ylim(0.96, 1.02)
     ax[0].set_xlabel('Orbital Phase')
     ax[0].set_ylabel('Relative Flux')
-    ax[1].plot(phase_lc2, y_lc2, 'k.')
-    ax[1].plot(phase_lc2-1, y_lc2, 'k.')
-    ax[1].plot(x_model, final_lc_model2, 'r-', lw=2)
-    ax[1].set_xlim(-0.02, 0.02)
-    ax[1].set_ylim(0.96, 1.02)
+    ax[1].plot(phase_rv1, y_rv1, 'k.')
+    ax[1].plot(phase_rv2, y_rv2 + v_sys2_diff, 'g.')
+    ax[1].plot(phase_rv3, y_rv3 + v_sys3_diff, 'b.')
+    ax[1].plot(phase_rv_model, final_rv_model, 'r-', lw=2)
+    ax[1].set_xlim(0, 1)
     ax[1].set_xlabel('Orbital Phase')
-    ax[1].set_ylabel('Relative Flux')
-    ax[2].plot(phase_lc3, y_lc3, 'k.')
-    ax[2].plot(phase_lc3-1, y_lc3, 'k.')
-    ax[2].plot(x_model, final_lc_model3, 'g-', lw=2)
-    ax[2].set_xlim(-0.02, 0.02)
-    ax[2].set_ylim(0.96, 1.02)
-    ax[2].set_xlabel('Orbital Phase')
-    ax[2].set_ylabel('Relative Flux')
-    ax[3].plot(phase_rv1, y_rv1, 'k.')
-    ax[3].plot(phase_rv2, y_rv2 + v_sys_diff2, 'g.')
-    ax[3].plot(phase_rv3, y_rv3 + v_sys_diff3, 'b.')
-    ax[3].plot(phase_rv_model, final_rv_model, 'r-', lw=2)
-    ax[3].set_xlim(0, 1)
-    ax[3].set_xlabel('Orbital Phase')
-    ax[3].set_ylabel('Radial Velocity')
+    ax[1].set_ylabel('Radial Velocity')
     fig.savefig('{}/chain_{}steps_{}walkers_fitted_models.png'.format(outdir,
                                                                       nsteps,
                                                                       nwalkers))
