@@ -7,8 +7,6 @@ ToDo:
        generalise how to handle the priors. Get ideas from
        ellc emcee example
     2. Generalise the handling of multiple instruments
-    3. Output the chains so they can be plotted quickly if a
-       file exists already
     4. Generalise how to spread out the walkers in the start
 """
 import sys
@@ -97,7 +95,7 @@ def lnprior(theta):
         0.002 < radius_2 < 0.007 and \
         88 < incl <= 90 and \
         0.1 <= ecc <= 0.2 and \
-        30.0 <= a <= 34.0 and \
+        28.0 <= a <= 36.0 and \
         70 <= omega < 90 and \
         -15 >= v_sys1 >= -25 and \
         -15 >= v_sys2 >= -25 and \
@@ -282,18 +280,18 @@ def lnprob(theta,
 
 if __name__ == "__main__":
     # initial guesses of the parameters
-    in_radius_1 = 0.029010     #solar radii
-    in_radius_2 = 0.004530     #solar radii
+    in_radius_1 = 0.029505    #solar radii
+    in_radius_2 = 0.004606     #solar radii
     in_sbratio = 0.0           # fixed = set in lnlike
-    in_q = 0.09904
-    in_incl = 89.564
-    in_t0 = 2453592.72423
-    in_period = 16.953634
-    in_ecc = 0.1467
-    in_omega = 79.98
-    in_a = 31.8           #solar radii
-    in_ldc_1_1 = 0.4428
-    in_ldc_1_2 = 0.1873
+    in_q = 0.09615
+    in_incl = 89.618
+    in_t0 = 2453592.74546
+    in_period = 16.95353
+    in_ecc = 0.1603
+    in_omega = 78.4529
+    in_a = 31.2868           #solar radii
+    in_ldc_1_1 = 0.4480
+    in_ldc_1_2 = 0.1878
     #in_lc1_l1 = 31.008 # lc1 spot params from initial fit on its own
     #in_lc1_b1 = -4.95
     #in_lc1_s1 = 5.954
@@ -302,9 +300,9 @@ if __name__ == "__main__":
     #in_lc2_b1 = -5.257
     #in_lc2_s1 = 11.033
     #in_lc2_f1 = 0.899
-    in_v_sys1 = -21.260
-    in_v_sys2 = -20.812
-    in_v_sys3 = -20.994
+    in_v_sys1 = -21.133
+    in_v_sys2 = -21.122
+    in_v_sys3 = -20.894
     # list of initial guesses
     initial = [in_radius_1,
                in_radius_2,
@@ -385,8 +383,8 @@ if __name__ == "__main__":
                                         usecols=[0, 1, 2], unpack=True)
     # set up the sampler
     ndim = len(initial)
-    nwalkers = 4*len(initial)
-    nsteps = 500
+    nwalkers = 4*len(initial)*2
+    nsteps = 4000
     # set up the starting positions
     pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
 
@@ -401,6 +399,10 @@ if __name__ == "__main__":
     # run the production chain
     print("Running MCMC...")
     sampler.run_mcmc(pos, nsteps, rstate0=np.random.get_state())
+    print("Saving chain...")
+    np.savetxt('{}/chain_{}steps_{}walkers.csv'.format(outdir, nsteps, nwalkers),
+               np.c_[sampler.chain.reshape((-1, ndim))],
+               delimiter=',',header=','.join(parameters))
     print("Done.")
 
     # plot and save the times series of each parameter
