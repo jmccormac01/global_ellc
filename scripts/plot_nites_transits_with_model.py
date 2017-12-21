@@ -117,27 +117,31 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
 
 if __name__ == "__main__":
     # global parameters
-    radius_1 = 0.0295437608859
-    radius_2 = 0.00461565991692
-    incl = 89.6014052756
-    t0 = 2453592.74549
-    period = 16.9535249477
-    ecc = 0.160330912881
-    omega = 78.4525955813
-    a = 31.1119535426
-    ldc_1_1 = 0.4496728301710
-    ldc_1_2 = 0.181578524972
-    v_sys1 = -21.13279412690
-    v_sys2 = -21.1222106321
-    v_sys2_diff = -0.0105834948736
-    v_sys3 = -20.8953539037
-    v_sys3_diff = -0.237440223241
-    q = 0.09831819073
+    sbratio = 0.0           # fixed = set in lnlike
+    radius_1 = 0.029363    #solar radii
+    radius_2 = 0.004665     #solar radii
+    incl = 89.6232
+    t0 = 2453592.74192
+    period = 16.9535452
+    ecc = 0.16035
+    omega = 78.39513
+    a = 31.650747           #solar radii
+    ldc_1_1 = 0.3897
+    ldc_1_2 = 0.1477
+    v_sys1 = -21.133
+    v_sys2 = -21.122
+    v_sys2_diff = -0.01098
+    v_sys3 = -20.896
+    v_sys3_diff = -0.23688
+    q = 0.09649
 
     # data and nights to plot
     data_dir = "/Users/jmcc/Dropbox/EBLMs/J23431841"
-    data_files = ['NITES_J234318.41_20131010_Clear_F2.lc.txt',
-                  'NITES_J234318.41_20141001_Clear_F1.lc.txt']
+    data_files = ['NITES_J234318.41_Clear_20120829_F1_A14_all.lc.txt',
+                  'NITES_J234318.41_Clear_20120829_F1_A14.lc.txt',
+                  'NITES_J234318.41_Clear_20130923_F2_A14.lc.txt',
+                  'NITES_J234318.41_Clear_20131010_F1_A14.lc.txt',
+                  'NITES_J234318.41_Clear_20141001_F1_A14.lc.txt']
 
     one_column()
     general()
@@ -149,7 +153,7 @@ if __name__ == "__main__":
     offset = 0.05
     counter = 0
     # loop over the lcs and plot them
-    for dat in data_files:
+    for i, dat in enumerate(data_files):
         infile = "{}/{}".format(data_dir, dat)
 
         t, f, e = np.loadtxt(infile, usecols=[2, 3, 4], unpack=True)
@@ -165,7 +169,7 @@ if __name__ == "__main__":
                                            period=1.0,
                                            radius_1=radius_1,
                                            radius_2=radius_2,
-                                           sbratio=0.0,
+                                           sbratio=sbratio,
                                            a=a,
                                            q=q,
                                            incl=incl,
@@ -180,7 +184,7 @@ if __name__ == "__main__":
                                              period=1.0,
                                              radius_1=radius_1,
                                              radius_2=radius_2,
-                                             sbratio=0.0,
+                                             sbratio=sbratio,
                                              a=a,
                                              q=q,
                                              incl=incl,
@@ -191,19 +195,26 @@ if __name__ == "__main__":
         res = f - lc_model_for_res
 
         # plot the data, models and residuals
-        residual_offset = 0.9
+        residual_offset = 0.80
         label_offset = 0.003
-        ax.scatter(ph, f-(counter*offset), c='k', marker='.', s=1)
-        ax.scatter(ph-1, f-(counter*offset), c='k', marker='.', s=1)
-        ax.scatter(ph, res+residual_offset-(counter*offset/2.), c='k', marker='.', s=1)
-        ax.scatter(ph-1, res+residual_offset-(counter*offset/2.), c='k', marker='.', s=1)
-        ax.axhline(residual_offset-(counter*offset/2.), c='r', lw=0.75)
-        ax.plot(x_model, final_lc_model-(counter*offset), 'r-', lw=0.75)
-        ax.text(0.01, final_lc_model[-1]-(counter*offset)+label_offset,
-                dat.split('_')[2], fontsize=10)
-        ax.text(0.01, residual_offset-(counter*offset/2.)+label_offset,
-                dat.split('_')[2], fontsize=10)
-        counter += 1
+        if i > 0:
+            ax.scatter(ph, f-(counter*offset), c='k', marker='.', s=1)
+            ax.scatter(ph-1, f-(counter*offset), c='k', marker='.', s=1)
+            ax.scatter(ph, res+residual_offset-(counter*offset/1.5), c='k', marker='.', s=1)
+            ax.scatter(ph-1, res+residual_offset-(counter*offset/1.5), c='k', marker='.', s=1)
+            ax.axhline(residual_offset-(counter*offset/1.5), c='r', lw=0.75)
+            ax.plot(x_model, final_lc_model-(counter*offset), 'r-', lw=0.75)
+            ax.text(0.01, final_lc_model[-1]-(counter*offset)+label_offset,
+                    dat.split('_')[3], fontsize=10)
+            ax.text(0.01, residual_offset-(counter*offset/1.5)+label_offset,
+                    dat.split('_')[3], fontsize=10)
+            counter += 1
+        else:
+            ax.scatter(ph, f-(counter*offset), c='lightgrey', marker='.', s=1)
+            ax.scatter(ph-1, f-(counter*offset), c='lightgrey', marker='.', s=1)
+            ax.scatter(ph, res+residual_offset-(counter*offset/1.5), c='lightgrey', marker='.', s=1)
+            ax.scatter(ph-1, res+residual_offset-(counter*offset/1.5), c='lightgrey', marker='.', s=1)
+
 
     fig.subplots_adjust(top=0.95, bottom=0.15, left=0.20, right=0.94)
     fig.savefig('{}/nites_phot_with_model.png'.format(data_dir))

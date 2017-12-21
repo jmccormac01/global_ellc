@@ -97,23 +97,24 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
 
 if __name__ == "__main__":
     # global parameters
-    radius_1 = 0.0295437608859
-    radius_2 = 0.00461565991692
-    incl = 89.6014052756
-    t0 = 2453592.74549
-    period = 16.9535249477
-    ecc = 0.160330912881
-    omega = 78.4525955813
-    a = 31.1119535426
-    ldc_1_1 = 0.4496728301710
-    ldc_1_2 = 0.181578524972
-    v_sys1 = -21.13279412690
-    v_sys2 = -21.1222106321
-    v_sys2_diff = -0.0105834948736
-    v_sys3 = -20.8953539037
-    v_sys3_diff = -0.237440223241
-    q = 0.09831819073
-    sbratio = 0.0
+    sbratio = 0.0           # fixed = set in lnlike
+    radius_1 = 0.029363    #solar radii
+    radius_2 = 0.004665     #solar radii
+    incl = 89.6232
+    t0 = 2453592.74192
+    period = 16.9535452
+    ecc = 0.16035
+    omega = 78.39513
+    a = 31.650747           #solar radii
+    ldc_1_1 = 0.3897
+    ldc_1_2 = 0.1477
+    v_sys1 = -21.133
+    v_sys2 = -21.122
+    v_sys2_diff = -0.01098
+    v_sys3 = -20.896
+    v_sys3_diff = -0.23688
+    q = 0.09649
+
     # orbital params
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
@@ -203,7 +204,7 @@ if __name__ == "__main__":
     ax[0].errorbar(phase_rv1, y_rv1, yerr=yerr_rv1, fmt='k.')
     ax[0].errorbar(phase_rv2, y_rv2 + v_sys2_diff, yerr=yerr_rv2, fmt='g.')
     ax[0].errorbar(phase_rv3, y_rv3 + v_sys3_diff, yerr=yerr_rv3, fmt='b.')
-    ax[0].plot(phase_rv_model, final_rv_model, 'r-', lw=1)
+    ax[0].plot(phase_rv_model[:-1], final_rv_model[:-1], 'r-', lw=1)
     ax[0].set_xlim(0, 1)
     ax[0].set_ylim(-31.0, -10.0)
     ax[0].set_ylabel('Radial Velocity (km/s)')

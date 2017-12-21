@@ -113,22 +113,24 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
     return lc_model
 
 # global parameters
-radius_1 = 0.0295437608859
-radius_2 = 0.00461565991692
-incl = 89.6014052756
-t0 = 2453592.74549
-period = 16.9535249477
-ecc = 0.160330912881
-omega = 78.4525955813
-a = 31.1119535426
-ldc_1_1 = 0.4496728301710
-ldc_1_2 = 0.181578524972
-v_sys1 = -21.13279412690
-v_sys2 = -21.1222106321
-v_sys2_diff = -0.0105834948736
-v_sys3 = -20.8953539037
-v_sys3_diff = -0.237440223241
-q = 0.09831819073
+sbratio = 0.0           # fixed = set in lnlike
+radius_1 = 0.029363    #solar radii
+radius_2 = 0.004665     #solar radii
+incl = 89.6232
+t0 = 2453592.74192
+period = 16.9535452
+ecc = 0.16035
+omega = 78.39513
+a = 31.650747           #solar radii
+ldc_1_1 = 0.3897
+ldc_1_2 = 0.1477
+v_sys1 = -21.133
+v_sys2 = -21.122
+v_sys2_diff = -0.01098
+v_sys3 = -20.896
+v_sys3_diff = -0.23688
+q = 0.09649
+
 
 # data and nights to plot
 nights_to_plot = [3219, 3236, 3253, 3270, 3948, 4050, 4067, 4321]
@@ -150,7 +152,7 @@ final_lc_model = light_curve_model(t_obs=x_model,
                                    period=1.0,
                                    radius_1=radius_1,
                                    radius_2=radius_2,
-                                   sbratio=0.0,
+                                   sbratio=sbratio,
                                    a=a,
                                    q=q,
                                    incl=incl,
