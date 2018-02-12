@@ -117,7 +117,33 @@ def readConfig(infile):
                                                   'prior_l': prior_l,
                                                   'prior_h': prior_h}
         # eventually read in the Gaussian parameters
+    try:
+        assert len(config['rvs']) == len(config['uniform_prior']['vsys']), "Mismatching RV + Vsys!"
+    except KeyError:
+        print('Mismatch in RVs + matching Vsys values, exiting!')
+        sys.exit(1)
     return config
+
+def dataLoader(config, data_type):
+    """
+    Generic data loadng
+    """
+    x_data = OrderedDict()
+    y_data = OrderedDict()
+    yerr_data = OrderedDict()
+    for filt in config[data_type]:
+        x_dat, y_dat, yerr_dat = [], [], []
+        for dat in config[data_type][filt]:
+            infile = "{}/{}".format(config['data_dir'], dat)
+            x, y, e = np.loadtxt(infile, usecols=[0, 1, 2], unpack=True)
+            x_dat.append(x)
+            y_dat.append(y)
+            yerr_dat.append(e)
+        # stack the light curves into the global lc holder
+        x_data[filt] = np.hstack(x_dat)
+        y_data[filt] = np.hstack(y_dat)
+        yerr_data[filt] = np.hstack(yerr_dat)
+    return x_data, y_data, yerr_data
 
 def light_curve_model(t_obs, t0, period, radius_1, radius_2,
                       sbratio, incl, f_s, f_c, a, q, ldc_1,
@@ -386,7 +412,6 @@ if __name__ == "__main__":
     # double check that the assignments have worked ok
     assert len(initial) == len(parameters) == len(weights)
     # generate the parameters labels
-    sys.exit()
     #parameters = ['r1', 'r2', 'inc', 'T0', 'P', 'ecc',
     #              'omega', 'a', 'ldc1', 'ldc2',
     #              'v_sys1', 'v_sys2', 'v_sys3', 'q']
@@ -416,30 +441,35 @@ if __name__ == "__main__":
     #             'NITES_J234318.41_Clear_20131010_F1_A14.lc.txt',
     #             'NITES_J234318.41_Clear_20141001_F1_A14.lc.txt']
     # read in multiple lc files that are to be treated the same
-    # e.g. non-spotty in this case
-    x_lc1, y_lc1, yerr_lc1 = [], [], []
-    for lc_file in lc1_files:
-        x_lc, y_lc, yerr_lc = np.loadtxt('{}/{}'.format(datadir, lc_file),
-                                         usecols=[2, 3, 4], unpack=True)
-        x_lc1.append(x_lc)
-        y_lc1.append(y_lc)
-        yerr_lc1.append(yerr_lc)
-    # stack the final lcs into one array
-    x_lc1 = np.hstack(x_lc1)
-    y_lc1 = np.hstack(y_lc1)
-    yerr_lc1 = np.hstack(yerr_lc1)
+    # e.g. same filter etc
+    #
+    #x_lc1, y_lc1, yerr_lc1 = [], [], []
+    #for lc_file in lc1_files:
+    #    x_lc, y_lc, yerr_lc = np.loadtxt('{}/{}'.format(datadir, lc_file),
+    #                                     usecols=[2, 3, 4], unpack=True)
+    #    x_lc1.append(x_lc)
+    #    y_lc1.append(y_lc)
+    #    yerr_lc1.append(yerr_lc)
+    ## stack the final lcs into one array
+    #x_lc1 = np.hstack(x_lc1)
+    #y_lc1 = np.hstack(y_lc1)
+    #yerr_lc1 = np.hstack(yerr_lc1)
 
     # RVs
-    rv1_file = 'J234318.41_NOT.rv'
-    rv2_file = 'J234318.41_SOPHIE.rv'
-    rv3_file = 'J234318.41_PARAS.rv'
-    # read in possible multiple rv files
-    x_rv1, y_rv1, yerr_rv1 = np.loadtxt('{}/{}'.format(datadir, rv1_file),
-                                        usecols=[0, 1, 2], unpack=True)
-    x_rv2, y_rv2, yerr_rv2 = np.loadtxt('{}/{}'.format(datadir, rv2_file),
-                                        usecols=[0, 1, 2], unpack=True)
-    x_rv3, y_rv3, yerr_rv3 = np.loadtxt('{}/{}'.format(datadir, rv3_file),
-                                        usecols=[0, 1, 2], unpack=True)
+    #rv1_file = 'J234318.41_NOT.rv'
+    #rv2_file = 'J234318.41_SOPHIE.rv'
+    #rv3_file = 'J234318.41_PARAS.rv'
+    ## read in possible multiple rv files
+    #x_rv1, y_rv1, yerr_rv1 = np.loadtxt('{}/{}'.format(datadir, rv1_file),
+    #                                    usecols=[0, 1, 2], unpack=True)
+    #x_rv2, y_rv2, yerr_rv2 = np.loadtxt('{}/{}'.format(datadir, rv2_file),
+    #                                    usecols=[0, 1, 2], unpack=True)
+    #x_rv3, y_rv3, yerr_rv3 = np.loadtxt('{}/{}'.format(datadir, rv3_file),
+    #                                    usecols=[0, 1, 2], unpack=True)
+    x_lc, y_lc, yerr_lc = dataLoader(config, 'lcs')
+    x_rv, y_rv, yerr_rv = dataLoader(config, 'rvs')
+    sys.exit()
+
     # set up the sampler
     ndim = len(initial)
     nwalkers = 4*len(initial)*8
