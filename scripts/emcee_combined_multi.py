@@ -10,6 +10,8 @@ ToDo:
     4. Generalise how to spread out the walkers in the start
 """
 import sys
+import argparse as ap
+from collections import defaultdict, OrderedDict
 import matplotlib
 matplotlib.use('QT5Agg')
 import matplotlib.pyplot as plt
@@ -23,6 +25,99 @@ import ellc
 # pylint: disable=no-member
 # pylint: disable=redefined-outer-name
 # pylint: disable=superfluous-parens
+
+def argParse():
+    """
+    Read in the command line arguments
+    """
+    p = ap.ArgumentParser()
+    p.add_argument('config', help='path to config file')
+    return p.parse_args()
+
+def readConfig(infile):
+    """
+    Read in the configuration file
+
+    This contains information on:
+        1. data location
+        2. light curves and rvs
+        3. input parameters with priors
+    """
+    config = OrderedDict()
+    f = open(infile).readlines()
+    for line in f:
+        # skip comment lines
+        if line.startswith('#'):
+            continue
+        sp = line.split()
+        # look for data locations etc
+        if sp[0] == 'data_dir':
+            config['data_dir'] = sp[1]
+            continue
+        elif sp[0] == 'out_dir':
+            config['out_dir'] = sp[1]
+            continue
+        elif sp[0] == 'lc':
+            if "lcs" not in config.keys():
+                config['lcs'] = defaultdict(list)
+            filt = sp[1]
+            lc_file = sp[2]
+            config['lcs'][filt].append(lc_file)
+            continue
+        elif sp[0] == 'rv':
+            if "rvs" not in config.keys():
+                config['rvs'] = defaultdict(list)
+            inst = sp[1]
+            rv_file = sp[2]
+            config['rvs'][inst].append(rv_file)
+            continue
+        # read Fixed parameters
+        if sp[1] == 'F':
+            param = sp[0]
+            value = float(sp[2])
+            if 'fixed' not in config.keys():
+                config['fixed'] = OrderedDict()
+            config['fixed'][param] = value
+        # read fit parameters with No prior
+        elif sp[1] == 'N':
+            if 'no_prior' not in config.keys():
+                config['no_prior'] = OrderedDict()
+            param = sp[0]
+            value = float(sp[2])
+            weight = float(sp[3])
+            config['no_prior'][param] = {'value': value,
+                                         'weight': weight}
+        # read fit parameters with Uniform priors
+        elif sp[1] == 'U':
+            if 'uniform_prior' not in config.keys():
+                config['uniform_prior'] = OrderedDict()
+            if sp[0] == 'vsys':
+                param = sp[0]
+                sys_inst = sp[2]
+                value = float(sp[3])
+                weight = float(sp[4])
+                prior_l = float(sp[5])
+                prior_h = float(sp[6])
+                if "vsys" not in config['uniform_prior'].keys():
+                    config['uniform_prior']['vsys'] = defaultdict(list)
+                config['uniform_prior']['vsys'][sys_inst] = {'value': value,
+                                                             'weight': weight,
+                                                             'prior_l': prior_l,
+                                                             'prior_h': prior_h}
+            else:
+                param = sp[0]
+                value = float(sp[2])
+                weight = float(sp[3])
+                prior_l = float(sp[4])
+                prior_h = float(sp[5])
+                if 'uniform_prior' not in config.keys():
+                    config['uniform_prior'] = OrderedDict()
+                config['uniform_prior'][param] = {'value': value,
+                                                  'weight': weight,
+                                                  'prior_l': prior_l,
+                                                  'prior_h': prior_h}
+        # eventually read in the Gaussian parameters
+    return config
 
 def light_curve_model(t_obs, t0, period, radius_1, radius_2,
                       sbratio, incl, f_s, f_c, a, q, ldc_1,
@@ -44,8 +139,8 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
                        ld_1='quad',
                        shape_1='sphere',
                        shape_2='sphere',
-                       grid_1='sparse', # set these to default again later
-                       grid_2='sparse',
+                       grid_1='default', # set these to default again later
+                       grid_2='default',
                        f_c=f_c,
                        f_s=f_s,
                        spots_1=spots_1,
@@ -243,45 +338,62 @@ def lnprob(theta,
                        x_rv3, y_rv3, yerr_rv3)
 
 if __name__ == "__main__":
+    args = argParse()
+    config = readConfig(args.config)
     # initial guesses of the parameters
-    in_sbratio = 0.0           # fixed = set in lnlike
-    in_radius_1 = 0.029363    #solar radii
-    in_radius_2 = 0.004665     #solar radii
-    in_incl = 89.6232
-    in_t0 = 2453592.74192
-    in_period = 16.9535452
-    in_ecc = 0.16035
-    in_omega = 78.39513
-    in_a = 31.650747           #solar radii
-    in_ldc_1_1 = 0.3897
-    in_ldc_1_2 = 0.1477
-    in_v_sys1 = -21.133
-    in_v_sys2 = -21.122
-    in_v_sys3 = -20.896
-    in_q = 0.09649
+    #in_sbratio = 0.0           # fixed = set in lnlike
+    #in_radius_1 = 0.029363    #solar radii
+    #in_radius_2 = 0.004665     #solar radii
+    #in_incl = 89.6232
+    #in_t0 = 2453592.74192
+    #in_period = 16.9535452
+    #in_ecc = 0.16035
+    #in_omega = 78.39513
+    #in_a = 31.650747           #solar radii
+    #in_ldc_1_1 = 0.3897
+    #in_ldc_1_2 = 0.1477
+    #in_v_sys1 = -21.133
+    #in_v_sys2 = -21.122
+    #in_v_sys3 = -20.896
+    #in_q = 0.09649
     # list of initial guesses
     #           in_ldc_1_1,
     #           in_ldc_1_2,
-    initial = [in_radius_1,
-               in_radius_2,
-               in_incl,
-               in_t0,
-               in_period,
-               in_ecc,
-               in_omega,
-               in_a,
-               in_v_sys1,
-               in_v_sys2,
-               in_v_sys3,
-               in_q]
-    # used in plotting - with floating ldcs
+    #initial = [in_radius_1,
+    #           in_radius_2,
+    #           in_incl,
+    #           in_t0,
+    #           in_period,
+    #           in_ecc,
+    #           in_omega,
+    #           in_a,
+    #           in_v_sys1,
+    #           in_v_sys2,
+    #           in_v_sys3,
+    #           in_q]
+    initial = [config['uniform_prior'][c]['value'] for c in config['uniform_prior'] if c != "vsys"] + \
+              [config['no_prior'][c]['value'] for c in config['no_prior']]
+    parameters = [p for p in config['uniform_prior'] if p != "vsys"] + [p for p in config['no_prior']]
+    weights = [config['uniform_prior'][c]['weight'] for c in config['uniform_prior'] if c != "vsys"] + \
+              [config['no_prior'][c]['weight'] for c in config['no_prior']]
+    if 'vsys' in config['uniform_prior'].keys():
+        initial = initial + \
+                  [config['uniform_prior']['vsys'][c]['value'] for c in config['uniform_prior']['vsys']]
+        parameters = parameters + \
+                     ["vsys_"+c for c in config['uniform_prior']['vsys']]
+        weights = weights + \
+                  [config['uniform_prior']['vsys'][c]['weight'] for c in config['uniform_prior']['vsys']]
+    # double check that the assignments have worked ok
+    assert len(initial) == len(parameters) == len(weights)
+    # generate the parameters labels
+    sys.exit()
     #parameters = ['r1', 'r2', 'inc', 'T0', 'P', 'ecc',
     #              'omega', 'a', 'ldc1', 'ldc2',
     #              'v_sys1', 'v_sys2', 'v_sys3', 'q']
     # used in plotting - with fixed ldcs
-    parameters = ['r1', 'r2', 'inc', 'T0', 'P', 'ecc',
-                  'omega', 'a', 'v_sys1', 'v_sys2',
-                  'v_sys3', 'q']
+    #parameters = ['r1', 'r2', 'inc', 'T0', 'P', 'ecc',
+    #              'omega', 'a', 'v_sys1', 'v_sys2',
+    #              'v_sys3', 'q']
     # set up the weights for the initialisation
     # these weights are used to scattter the walkers
     # if using a prior make sure they are not scattered
@@ -292,19 +404,17 @@ if __name__ == "__main__":
     #           1e-1, 1e-2, 1e-3, 1e-3,
     #           1e-1, 1e-1, 1e-1, 1e-3]
     # fixed ldcs
-    weights = [1e-4, 1e-4, 1e-2, 1e-3, 1e-4, 1e-3,
-               1e-1, 1e-2, 1e-1, 1e-1, 1e-1, 1e-3]
-    # check the lists are the same length
-    assert len(initial) == len(parameters) == len(weights)
+    #weights = [1e-4, 1e-4, 1e-2, 1e-3, 1e-4, 1e-3,
+    #           1e-1, 1e-2, 1e-1, 1e-1, 1e-1, 1e-3]
 
     # READ IN THE DATA
-    datadir = '/Users/jmcc/Dropbox/EBLMs/J23431841'
-    outdir = '{}/output'.format(datadir)
+    #datadir = '/Users/jmcc/Dropbox/EBLMs/J23431841'
+    #outdir = '{}/output'.format(datadir)
     # phot
-    lc1_files = ['NITES_J234318.41_Clear_20120829_F1_A14.lc.txt',
-                 'NITES_J234318.41_Clear_20130923_F2_A14.lc.txt',
-                 'NITES_J234318.41_Clear_20131010_F1_A14.lc.txt',
-                 'NITES_J234318.41_Clear_20141001_F1_A14.lc.txt']
+    #lc1_files = ['NITES_J234318.41_Clear_20120829_F1_A14.lc.txt',
+    #             'NITES_J234318.41_Clear_20130923_F2_A14.lc.txt',
+    #             'NITES_J234318.41_Clear_20131010_F1_A14.lc.txt',
+    #             'NITES_J234318.41_Clear_20141001_F1_A14.lc.txt']
     # read in multiple lc files that are to be treated the same
     # e.g. non-spotty in this case
     x_lc1, y_lc1, yerr_lc1 = [], [], []
