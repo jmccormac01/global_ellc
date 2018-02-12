@@ -198,7 +198,7 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
     rv1 = rv1 + v_sys
     return rv1
 
-def lnprior(theta):
+def lnprior(theta, config, n_priors):
     """
     Needs generalising for priors
 
@@ -210,26 +210,53 @@ def lnprior(theta):
     #radius_1, radius_2, incl, t0, \
     #period, ecc, omega, a, ldc_1_1, ldc_1_2, \
     #v_sys1, v_sys2, v_sys3, q = theta
-
+    #
     # fixed ldcs
-    radius_1, radius_2, incl, t0, \
-    period, ecc, omega, a, v_sys1, v_sys2, \
-    v_sys3, q = theta
-
+    #radius_1, radius_2, incl, t0, \
+    #period, ecc, omega, a, v_sys1, v_sys2, \
+    #v_sys3, q = theta
+    #
     # uniform priors for the parameters in theta
-    if 0.02 <= radius_1 <= 0.04 and \
-        0.002 < radius_2 < 0.007 and \
-        88 < incl <= 90 and \
-        0.1 <= ecc <= 0.2 and \
-        28.0 <= a <= 36.0 and \
-        70 <= omega < 90 and \
-        -15 >= v_sys1 >= -25 and \
-        -15 >= v_sys2 >= -25 and \
-        -15 >= v_sys3 >= -25 and \
-        0.05 < q < 0.145:
-        return 0.0
+    #if 0.02 <= radius_1 <= 0.04 and \
+    #    0.002 < radius_2 < 0.007 and \
+    #    88 < incl <= 90 and \
+    #    0.1 <= ecc <= 0.2 and \
+    #    28.0 <= a <= 36.0 and \
+    #    70 <= omega < 90 and \
+    #    -15 >= v_sys1 >= -25 and \
+    #    -15 >= v_sys2 >= -25 and \
+    #    -15 >= v_sys3 >= -25 and \
+    #    0.05 < q < 0.145:
+    #    return 0.0
+    #else:
+    #    return -np.inf
+
+    priors = config['uniform_prior']
+    for i, p in enumerate(priors):
+        if p != 'vsys':
+            val = theta[i]
+            llim = priors[p]['prior_l']
+            ulim = priors[p]['prior_h']
+            # check for incorrect priors
+            if llim > ulim:
+                print('{} priors wrong! {} > {}'.format(p, llim, ulim))
+                sys.exit()
+            if val < llim or val > ulim:
+                return -np.inf
+    # there are still some values to check, hence vsys values
+    if i < n_priors-1:
+        for j, p in enumerate(priors['vsys']):
+            val = theta[i+j+1]
+            llim = priors['vsys'][p]['prior_l']
+            ulim = priors['vsys'][p]['prior_h']
+            # check for incorrect priors
+            if llim > ulim:
+                print('{} priors wrong! {} > {}'.format(p, llim, ulim))
+                sys.exit()
+            if val < llim or val > ulim:
+                return -np.inf
     else:
-        return -np.inf
+        return 0.0
 
 def lnlike_sub(data_type, model, data, error):
     """
@@ -346,15 +373,13 @@ def lnlike(theta,
     lnlike = lnlike_lc1 + lnlike_rv1 + lnlike_rv2 + lnlike_rv3
     return lnlike
 
-def lnprob(theta,
-           x_lc1, y_lc1, yerr_lc1,
-           x_rv1, y_rv1, yerr_rv1,
-           x_rv2, y_rv2, yerr_rv2,
-           x_rv3, y_rv3, yerr_rv3):
+def lnprob(theta, config, n_priors,
+           x_lc, y_lc, yerr_lc,
+           x_rv, y_rv, yerr_rv):
     """
     Add docstring
     """
-    lp = lnprior(theta)
+    lp = lnprior(theta, config, n_priors)
     if not np.isfinite(lp):
         return -np.inf
     return lp + lnlike(theta,
@@ -397,11 +422,16 @@ if __name__ == "__main__":
     #           in_v_sys2,
     #           in_v_sys3,
     #           in_q]
-    initial = [config['uniform_prior'][c]['value'] for c in config['uniform_prior'] if c != "vsys"] + \
-              [config['no_prior'][c]['value'] for c in config['no_prior']]
-    parameters = [p for p in config['uniform_prior'] if p != "vsys"] + [p for p in config['no_prior']]
-    weights = [config['uniform_prior'][c]['weight'] for c in config['uniform_prior'] if c != "vsys"] + \
-              [config['no_prior'][c]['weight'] for c in config['no_prior']]
+
+    # setting up the initial, parameters and weights lists
+    # these are done as follows:
+    #   uniform_priors first (forming the start of theta)
+    #   vsys entries, which may not exist
+    #   no_priors last, looping over theta and counting n_priors will skip these
+    initial = [config['uniform_prior'][c]['value'] for c in config['uniform_prior'] if c != "vsys"]
+    parameters = [p for p in config['uniform_prior'] if p != "vsys"]
+    weights = [config['uniform_prior'][c]['weight'] for c in config['uniform_prior'] if c != "vsys"]
+    # add the different systemic velocities
     if 'vsys' in config['uniform_prior'].keys():
         initial = initial + \
                   [config['uniform_prior']['vsys'][c]['value'] for c in config['uniform_prior']['vsys']]
@@ -409,6 +439,11 @@ if __name__ == "__main__":
                      ["vsys_"+c for c in config['uniform_prior']['vsys']]
         weights = weights + \
                   [config['uniform_prior']['vsys'][c]['weight'] for c in config['uniform_prior']['vsys']]
+    n_priors = len(initial)
+    # now add the no priors on to the end
+    initial = initial + [config['no_prior'][c]['value'] for c in config['no_prior']]
+    parameters = parameters + [p for p in config['no_prior']]
+    weights = weights + [config['no_prior'][c]['weight'] for c in config['no_prior']]
     # double check that the assignments have worked ok
     assert len(initial) == len(parameters) == len(weights)
     # generate the parameters labels
@@ -478,10 +513,9 @@ if __name__ == "__main__":
     pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob,
-                                    args=(x_lc1, y_lc1, yerr_lc1,
-                                          x_rv1, y_rv1, yerr_rv1,
-                                          x_rv2, y_rv2, yerr_rv2,
-                                          x_rv3, y_rv3, yerr_rv3))
+                                    args=(config, n_priors,
+                                          x_lc, y_lc, yerr_lc,
+                                          x_rv, y_rv, yerr_rv))
 
     # run the production chain
     print("Running MCMC...")
