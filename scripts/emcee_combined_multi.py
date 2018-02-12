@@ -230,7 +230,7 @@ def lnprior(theta, config, n_priors):
     #    return 0.0
     #else:
     #    return -np.inf
-
+    imax = 0
     priors = config['uniform_prior']
     for i, p in enumerate(priors):
         if p != 'vsys':
@@ -243,10 +243,11 @@ def lnprior(theta, config, n_priors):
                 sys.exit()
             if val < llim or val > ulim:
                 return -np.inf
+        imax = i
     # there are still some values to check, hence vsys values
-    if i < n_priors-1:
+    if imax < n_priors-1:
         for j, p in enumerate(priors['vsys']):
-            val = theta[i+j+1]
+            val = theta[imax+j+1]
             llim = priors['vsys'][p]['prior_l']
             ulim = priors['vsys'][p]['prior_h']
             # check for incorrect priors
@@ -281,96 +282,143 @@ def lnlike_sub(data_type, model, data, error):
         sys.exit(1)
     return lnlike
 
-def lnlike(theta,
-           x_lc1, y_lc1, yerr_lc1,
-           x_rv1, y_rv1, yerr_rv1,
-           x_rv2, y_rv2, yerr_rv2,
-           x_rv3, y_rv3, yerr_rv3):
+def lnlike(theta, config,
+           x_lc, y_lc, yerr_lc,
+           x_rv, y_rv, yerr_rv):
     """
     Work out the log likelihood for the proposed model
     """
-    # unpack theta and pass parms to model
-
-    # floating ldcs
-    #radius_1, radius_2, incl, t0, period, \
-    #ecc, omega, a, ldc_1_1, ldc_1_2, \
-    #v_sys1, v_sys2, v_sys3, q = theta
-
-    # set the two ldcs into a list for ellc
-    #ldcs_1 = [ldc_1_1, ldc_1_2]
-
-    # fixed ldcs
-    radius_1, radius_2, incl, t0, period, \
-    ecc, omega, a, v_sys1, v_sys2, v_sys3, q = theta
-
-    # fixed parameters
-    ldcs_1 = [in_ldc_1_1, in_ldc_1_2]
-    sbratio = in_sbratio
+    # make copies to make coding next bit easier
+    params = config['parameters']
+    fixed = config['fixed']
+    no_prior = config['no_prior']
+    uniform = config['uniform_prior']
+    # t0
+    if 't0' in no_prior or 't0' in uniform:
+        t0 = theta[params.index('t0')]
+    elif 't0' in fixed:
+        t0 = fixed['t0']
+    else:
+        raise IndexError('Cannot find t0 in lnlike')
+    # period
+    if 'period' in no_prior or 'period' in uniform:
+        period = theta[params.index('period')]
+    elif 'period' in fixed:
+        period = fixed['period']
+    else:
+        raise IndexError('Cannot find period in lnlike')
+    # radius_1
+    if 'r1_a' in no_prior or 'r1_a' in uniform:
+        r1_a = theta[params.index('r1_a')]
+    elif 'r1_a' in fixed:
+        r1_a = fixed['r1_a']
+    else:
+        raise IndexError('Cannot find r1_a in lnlike')
+    # radius_2
+    if 'r2_a' in no_prior or 'r2_a' in uniform:
+        r2_a = theta[params.index('r2_a')]
+    elif 'r2_a' in fixed:
+        r2_a = fixed['r2_a']
+    else:
+        raise IndexError('Cannot find r2_a in lnlike')
+    # sbratio
+    if 'sbratio' in no_prior or 'sbratio' in uniform:
+        sbratio = theta[params.index('sbratio')]
+    elif 'sbratio' in fixed:
+        sbratio = fixed['sbratio']
+    else:
+        raise IndexError('Cannot find sbratio in lnlike')
+    # a_Rs
+    if 'a_r1' in no_prior or 'a_r1' in uniform:
+        a_r1 = theta[params.index('a_r1')]
+    elif 'a_r1' in fixed:
+        a_r1 = fixed['a_r1']
+    else:
+        raise IndexError('Cannot find a_r1 in lnlike')
+    # q
+    if 'q' in no_prior or 'q' in uniform:
+        q = theta[params.index('q')]
+    elif 'q' in fixed:
+        q = fixed['q']
+    else:
+        raise IndexError('Cannot find q in lnlike')
+    # incl
+    if 'incl' in no_prior or 'incl' in uniform:
+        incl = theta[params.index('incl')]
+    elif 'incl' in fixed:
+        incl = fixed['incl']
+    else:
+        raise IndexError('Cannot find incl in lnlike')
+    # ecc
+    if 'ecc' in no_prior or 'ecc' in uniform:
+        ecc = theta[params.index('ecc')]
+    elif 'ecc' in fixed:
+        ecc = fixed['ecc']
+    else:
+        raise IndexError('Cannot find ecc in lnlike')
+    # omega
+    if 'omega' in no_prior or 'omega' in uniform:
+        omega = theta[params.index('omega')]
+    elif 'omega' in fixed:
+        omega = fixed['omega']
+    else:
+        raise IndexError('Cannot find omega in lnlike')
+    # ldc_1_1
+    if 'ldc_1_1' in no_prior or 'ldc_1_1' in uniform:
+        ldc_1_1 = theta[params.index('ldc_1_1')]
+    elif 'ldc_1_1' in fixed:
+        ldc_1_1 = fixed['ldc_1_1']
+    else:
+        raise IndexError('Cannot find ldc_1_1 in lnlike')
+    # ldc_1_2
+    if 'ldc_1_2' in no_prior or 'ldc_1_2' in uniform:
+        ldc_1_2 = theta[params.index('ldc_1_2')]
+    elif 'ldc_1_2' in fixed:
+        ldc_1_2 = fixed['ldc_1_2']
+    else:
+        raise IndexError('Cannot find ldc_1_2 in lnlike')
+    # tweaking parameters
+    ldcs_1 = [ldc_1_1, ldc_1_2]
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
 
-    # light curve 3 likelihood function - non-spotty
-    model_lc1 = light_curve_model(t_obs=x_lc1,
+    # calculate lnlike of light curves
+    lnlike_lc = 0.0
+    for filt in x_lc:
+        model_lc = light_curve_model(t_obs=x_lc[filt],
+                                     t0=t0,
+                                     period=period,
+                                     radius_1=r1_a,
+                                     radius_2=r2_a,
+                                     sbratio=sbratio,
+                                     a=a_r1,
+                                     q=q,
+                                     incl=incl,
+                                     f_s=f_s,
+                                     f_c=f_c,
+                                     ldc_1=ldcs_1)
+        lnlike_lc += lnlike_sub('phot', model_lc, y_lc[filt], yerr_lc[filt])
+
+    # calculate lnlike of the radial velocities
+    lnlike_rv = 0.0
+    for inst in x_rv:
+        vsys = theta.index('vsys_{}'.format(inst))
+        model_rv = rv_curve_model(t_obs=x_rv[inst],
                                   t0=t0,
                                   period=period,
-                                  radius_1=radius_1,
-                                  radius_2=radius_2,
+                                  radius_1=r1_a,
+                                  radius_2=r2_a,
                                   sbratio=sbratio,
-                                  a=a,
+                                  a=a_r1,
                                   q=q,
                                   incl=incl,
                                   f_s=f_s,
                                   f_c=f_c,
-                                  ldc_1=ldcs_1)
-    lnlike_lc1 = lnlike_sub('phot', model_lc1, y_lc1, yerr_lc1)
-
-    # rv curve likelihood function for instrument 1
-    model_rv1 = rv_curve_model(t_obs=x_rv1,
-                               t0=t0,
-                               period=period,
-                               radius_1=radius_1,
-                               radius_2=radius_2,
-                               sbratio=sbratio,
-                               a=a,
-                               q=q,
-                               incl=incl,
-                               f_s=f_s,
-                               f_c=f_c,
-                               v_sys=v_sys1)
-    lnlike_rv1 = lnlike_sub('rv', model_rv1, y_rv1, yerr_rv1)
-
-    # rv curve likelihood function for instrument 2
-    model_rv2 = rv_curve_model(t_obs=x_rv2,
-                               t0=t0,
-                               period=period,
-                               radius_1=radius_1,
-                               radius_2=radius_2,
-                               sbratio=sbratio,
-                               a=a,
-                               q=q,
-                               incl=incl,
-                               f_s=f_s,
-                               f_c=f_c,
-                               v_sys=v_sys2)
-    lnlike_rv2 = lnlike_sub('rv', model_rv2, y_rv2, yerr_rv2)
-
-    # rv curve likelihood function for instrument 3
-    model_rv3 = rv_curve_model(t_obs=x_rv3,
-                               t0=t0,
-                               period=period,
-                               radius_1=radius_1,
-                               radius_2=radius_2,
-                               sbratio=sbratio,
-                               a=a,
-                               q=q,
-                               incl=incl,
-                               f_s=f_s,
-                               f_c=f_c,
-                               v_sys=v_sys3)
-    lnlike_rv3 = lnlike_sub('rv', model_rv3, y_rv3, yerr_rv3)
+                                  v_sys=vsys)
+        lnlike_rv += lnlike_sub('rv', model_rv, y_rv[inst], yerr_rv[inst])
 
     # sum to get overall likelihood function
-    lnlike = lnlike_lc1 + lnlike_rv1 + lnlike_rv2 + lnlike_rv3
+    lnlike = lnlike_lc + lnlike_rv
     return lnlike
 
 def lnprob(theta, config, n_priors,
@@ -382,15 +430,14 @@ def lnprob(theta, config, n_priors,
     lp = lnprior(theta, config, n_priors)
     if not np.isfinite(lp):
         return -np.inf
-    return lp + lnlike(theta,
-                       x_lc1, y_lc1, yerr_lc1,
-                       x_rv1, y_rv1, yerr_rv1,
-                       x_rv2, y_rv2, yerr_rv2,
-                       x_rv3, y_rv3, yerr_rv3)
+    return lp + lnlike(theta, config,
+                       x_lc, y_lc, yerr_lc,
+                       x_rv, y_rv, yerr_rv)
 
 if __name__ == "__main__":
     args = argParse()
     config = readConfig(args.config)
+    outdir = config['out_dir']
     # initial guesses of the parameters
     #in_sbratio = 0.0           # fixed = set in lnlike
     #in_radius_1 = 0.029363    #solar radii
@@ -446,6 +493,10 @@ if __name__ == "__main__":
     weights = weights + [config['no_prior'][c]['weight'] for c in config['no_prior']]
     # double check that the assignments have worked ok
     assert len(initial) == len(parameters) == len(weights)
+    # add the initial, parameters, weights to config
+    config['initial'] = initial
+    config['parameters'] = parameters
+    config['weights'] = weights
     # generate the parameters labels
     #parameters = ['r1', 'r2', 'inc', 'T0', 'P', 'ecc',
     #              'omega', 'a', 'ldc1', 'ldc2',
@@ -503,12 +554,12 @@ if __name__ == "__main__":
     #                                    usecols=[0, 1, 2], unpack=True)
     x_lc, y_lc, yerr_lc = dataLoader(config, 'lcs')
     x_rv, y_rv, yerr_rv = dataLoader(config, 'rvs')
-    sys.exit()
 
     # set up the sampler
     ndim = len(initial)
-    nwalkers = 4*len(initial)*8
-    nsteps = 1000
+    nwalkers = 4*len(initial)#*8
+    #nsteps = 1000
+    nsteps = 100
     # set up the starting positions
     pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
 
@@ -523,7 +574,7 @@ if __name__ == "__main__":
     print("Saving chain...")
     np.savetxt('{}/chain_{}steps_{}walkers.csv'.format(outdir, nsteps, nwalkers),
                np.c_[sampler.chain.reshape((-1, ndim))],
-               delimiter=',',header=','.join(parameters))
+               delimiter=',', header=','.join(parameters))
     print("Done.")
 
     # plot and save the times series of each parameter
@@ -545,62 +596,59 @@ if __name__ == "__main__":
     samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
 
     # most likely set of parameters
-    radius_1 = np.median(samples[:, 0])
-    radius_2 = np.median(samples[:, 1])
-    incl = np.median(samples[:, 2])
-    t0 = np.median(samples[:, 3])
-    period = np.median(samples[:, 4])
-    ecc = np.median(samples[:, 5])
-    omega = np.median(samples[:, 6])
-    a = np.median(samples[:, 7])
+    best_params = OrderedDict()
+    for i, param in enumerate(config['parameters']):
+        best_params[param] = {'value': np.median(samples[:, i]),
+                              'error': np.std(samples[:, i])}
+
+    #radius_1 = np.median(samples[:, 0])
+    #radius_2 = np.median(samples[:, 1])
+    #incl = np.median(samples[:, 2])
+    #t0 = np.median(samples[:, 3])
+    #period = np.median(samples[:, 4])
+    #ecc = np.median(samples[:, 5])
+    #omega = np.median(samples[:, 6])
+    #a = np.median(samples[:, 7])
     #ldc_1_1 = np.median(samples[:, 8])
     #ldc_1_2 = np.median(samples[:, 9])
-    v_sys1 = np.median(samples[:, 8])
-    v_sys2 = np.median(samples[:, 9])
-    v_sys3 = np.median(samples[:, 10])
-    q = np.median(samples[:, 11])
+    #v_sys1 = np.median(samples[:, 8])
+    #v_sys2 = np.median(samples[:, 9])
+    #v_sys3 = np.median(samples[:, 10])
+    #q = np.median(samples[:, 11])
 
     # correc the systematic velocities to the first one
-    v_sys2_diff = v_sys1 - v_sys2
-    v_sys3_diff = v_sys1 - v_sys3
+    #v_sys2_diff = v_sys1 - v_sys2
+    #v_sys3_diff = v_sys1 - v_sys3
 
-    print('radius_1 = {} ± {}'.format(radius_1, np.std(samples[:, 0])))
-    print('radius_2 = {} ± {}'.format(radius_2, np.std(samples[:, 1])))
-    print('incl = {} ± {}'.format(incl, np.std(samples[:, 2])))
-    print('t0 = {} ± {}'.format(t0, np.std(samples[:, 3])))
-    print('period = {} ± {}'.format(period, np.std(samples[:, 4])))
-    print('ecc = {} ± {}'.format(ecc, np.std(samples[:, 5])))
-    print('omega = {} ± {}'.format(omega, np.std(samples[:, 6])))
-    print('a = {} ± {}'.format(a, np.std(samples[:, 7])))
+    #print('radius_1 = {} ± {}'.format(radius_1, np.std(samples[:, 0])))
+    #print('radius_2 = {} ± {}'.format(radius_2, np.std(samples[:, 1])))
+    #print('incl = {} ± {}'.format(incl, np.std(samples[:, 2])))
+    #print('t0 = {} ± {}'.format(t0, np.std(samples[:, 3])))
+    #print('period = {} ± {}'.format(period, np.std(samples[:, 4])))
+    #print('ecc = {} ± {}'.format(ecc, np.std(samples[:, 5])))
+    #print('omega = {} ± {}'.format(omega, np.std(samples[:, 6])))
+    #print('a = {} ± {}'.format(a, np.std(samples[:, 7])))
     #print('ldc_1_1 = {} ± {}'.format(ldc_1_1, np.std(samples[:, 8])))
     #print('ldc_1_2 = {} ± {}'.format(ldc_1_2, np.std(samples[:, 9])))
-    print('v_sys1 = {} ± {}'.format(v_sys1, np.std(samples[:, 8])))
-    print('v_sys2 = {} ± {}'.format(v_sys2, np.std(samples[:, 9])))
-    print('v_sys2_diff = {}'.format(v_sys2_diff))
-    print('v_sys3 = {} ± {}'.format(v_sys3, np.std(samples[:, 10])))
-    print('v_sys3_diff = {}'.format(v_sys3_diff))
-    print('q = {} ± {}'.format(q, np.std(samples[:, 11])))
+    #print('v_sys1 = {} ± {}'.format(v_sys1, np.std(samples[:, 8])))
+    #print('v_sys2 = {} ± {}'.format(v_sys2, np.std(samples[:, 9])))
+    #print('v_sys2_diff = {}'.format(v_sys2_diff))
+    #print('v_sys3 = {} ± {}'.format(v_sys3, np.std(samples[:, 10])))
+    #print('v_sys3_diff = {}'.format(v_sys3_diff))
+    #print('q = {} ± {}'.format(q, np.std(samples[:, 11])))
 
     # Plot triangle plot
     #                            "$ldc1_1$",
     #                            "$ldc1_2$",
+    labels = ["$"+p+"$" for p in config['parameters']]
     fig = corner.corner(samples,
-                        labels=["$radius_1$",
-                                "$radius_2$",
-                                "$incl$",
-                                "$t0$",
-                                "$period$",
-                                "$ecc$",
-                                "$omega$",
-                                "$a$",
-                                "$v_sys1$",
-                                "$v_sys2$",
-                                "$v_sys3$",
-                                "$q$"],
+                        labels=parameters,
                         truths=initial,
                         plot_contours=False)
     fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
     fig.clf()
+    
+    sys.exit()
 
     # take most likely set of parameters and plot the models
     # make a dense mesh of time points for the lcs and RVs
