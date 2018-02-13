@@ -76,9 +76,10 @@ vsys U PARAS -20.896 0.1 -25.0 -15.0
 ```
 
 The config file will be read and all parameters are stored in the
-'config' object. Different numbers of instruments and filters
+```config``` object. Different numbers of instruments and filters
 should be handled automatically.
 The following output is made:
+
     1. plot of each variable parameter's walker
     1. corner plot of the post-burnin chain segment
     1. plot of data with fitted model
