@@ -85,10 +85,16 @@ def readConfig(infile):
             continue
         elif sp[0] == 'rv':
             if "rvs" not in config.keys():
-                config['rvs'] = defaultdict(list)
+                config['rvs'] = OrderedDict()
             inst = sp[1]
             rv_file = sp[2]
-            config['rvs'][inst].append(rv_file)
+            config['rvs'][inst] = rv_file
+            continue
+        elif sp[0] == 'nsteps':
+            config['nsteps'] = int(sp[1])
+            continue
+        elif sp[0] == 'walker_scaling':
+            config['walker_scaling'] = int(sp[1])
             continue
         # read Fixed parameters
         if sp[1] == 'F':
@@ -107,6 +113,7 @@ def readConfig(infile):
             config['no_prior'][param] = {'value': value,
                                          'weight': weight}
         # read fit parameters with Uniform priors
+        # TODO: eventually read in the Gaussian parameters
         elif sp[1] == 'U':
             if 'uniform_prior' not in config.keys():
                 config['uniform_prior'] = OrderedDict()
@@ -135,12 +142,29 @@ def readConfig(infile):
                                                   'weight': weight,
                                                   'prior_l': prior_l,
                                                   'prior_h': prior_h}
-        # eventually read in the Gaussian parameters
+    # make some checks for all parameters required
+    # RVs + vsys
     try:
         assert len(config['rvs']) == len(config['uniform_prior']['vsys']), "Mismatching RV + Vsys!"
     except KeyError:
         print('Mismatch in RVs + matching Vsys values, exiting!')
         sys.exit(1)
+    defaults = 0
+    # nsteps for MCMC
+    if 'nsteps' not in config.keys():
+        print('nsteps not supplied in the config file, defaulting to 1000...')
+        config['nsteps'] = 1000
+        defaults += 1
+    # walker_scaling
+    if 'walker_scaling' not in config.keys():
+        print('walker_scaling no supplied in the config file, defaulting to 1...')
+        config['walker_scaling'] = 1
+        defaults += 1
+    if defaults > 0:
+        x = input('Accept the defaults above? (y | n): ')
+        if x.lower() != 'y':
+            print('Quiting!')
+            sys.exit(1)
     return config
 
 def dataLoader(config, data_type):
@@ -487,6 +511,19 @@ def lnprob(theta, config, n_priors,
                        x_lc, y_lc, yerr_lc,
                        x_rv, y_rv, yerr_rv)
 
+def findBestParameter(param, config):
+    """
+    Locate the best (or fixed, if fixed)
+    for a given parameter
+    """
+    if param in best_params:
+        return best_params[param]['value']
+    elif param in config['fixed']:
+        return fixed[param]
+    else:
+        print('Cannot find {} in best_parameters | fixed'.format(param))
+        sys.exit(1)
+
 if __name__ == "__main__":
     args = argParse()
     config = readConfig(args.config)
@@ -523,8 +560,11 @@ if __name__ == "__main__":
     x_rv, y_rv, yerr_rv = dataLoader(config, 'rvs')
     # set up the sampler
     ndim = len(initial)
-    nwalkers = 4*len(initial)#*8
-    nsteps = 100
+    # recommended nwalkers is 4*n_parameters
+    # more walkers can help find the global minima, hence optional scaling
+    nwalkers = 4*len(initial) * config['walker_scaling']
+    # set the number of steps in the MCMC chain
+    nsteps = config['nsteps']
     # set up the starting positions
     pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
     # set up the sampler
@@ -559,9 +599,11 @@ if __name__ == "__main__":
     for i, param in enumerate(config['parameters']):
         best_params[param] = {'value': np.median(samples[:, i]),
                               'error': np.std(samples[:, i])}
-
-    # TODO: print a summary of the best parameters/log it to a file
-
+        print("{}: {:.6f} +/- {:.6f}".format(param,
+                                             best_params[param]['value'],
+                                             best_params[param]['error']))
+    # stick the best params in the config with everything else
+    config['best_params'] = best_params
     # make a corner plot
     labels = ["$"+p+"$" for p in config['parameters']]
     fig = corner.corner(samples,
@@ -575,21 +617,32 @@ if __name__ == "__main__":
     # TODO: Finish addding plotting of final model
     sys.exit()
 
+    # extract the final parameters in a generic way
+    # to plot the final model and data together
+    r1_a = findBestParameter('r1_a', config)
+    r2_a = findBestParameter('r2_a', config)
+    incl = findBestParameter('incl', config)
+    t0 = findBestParameter('t0', config)
+    period = findBestParameter('period', config)
+    ecc = findBestParameter('ecc', config)
+    omega = findBestParameter('omega', config)
+    a_r1 = findBestParameter('a_r1', config)
+    ldc_1_1 = findBestParameter('ldc_1_1', config)
+    ldc_1_2 = findBestParameter('ldc_1_2', config)
+    q = findBestParameter('q', config)
+    
+
     # take most likely set of parameters and plot the models
     # make a dense mesh of time points for the lcs and RVs
     # this is done in phase space for simplicity,
     # i.e. P = 1 and T0 = 0.0 in model
 
-    # THIS NEEDS WORK TO CHECK THE FINAL COMBINATION OF DATA + MODEL IS CORRECT
+    # set up some param combos for plotting
     x_model = np.linspace(-0.5, 0.5, 1000)
     x_rv_model = np.linspace(t0, t0+period, 1000)
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
-
-    # floating ldcs
-    #ldcs_1 = [ldc_1_1, ldc_1_2]
-    # fixed ldcs
-    ldcs_1 = [in_ldc_1_1, in_ldc_1_2]
+    ldcs_1 = [ldc_1_1, ldc_1_2]
 
     # final models
     final_lc_model1 = light_curve_model(t_obs=x_model,
@@ -604,6 +657,7 @@ if __name__ == "__main__":
                                         f_s=f_s,
                                         f_c=f_c,
                                         ldc_1=ldcs_1)
+    /
     final_rv_model = rv_curve_model(t_obs=x_rv_model,
                                     t0=t0,
                                     period=period,
