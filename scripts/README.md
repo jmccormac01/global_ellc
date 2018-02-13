@@ -1,4 +1,8 @@
-# ellc scripts
+# ELLC Scripts
 
-   1. plot_wasp_transits_with_model.py - This script is used for plotting WASP data only with the best fitting model from ellc
+   1. global_ellc.py - A generalised multi-instrument binary modelling code built on ellc
+
+# Contributors
+
+    James McCormac, James Blake
 
