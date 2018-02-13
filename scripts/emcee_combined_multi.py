@@ -1,5 +1,80 @@
 """
-This is an attempt at a multi-instrument version of emcee_combined.py
+A generalised multi-instrument version of James Blake's emcee_combined.py
+
+This code was written to model eclipsing MS+BD binaries and so contains
+flexibility on a subset of binary parameters. More flexability can be
+included easily later.
+
+To run the code you must specify a configuration file which describes the
+data location, mcmc setup and initial parameters + priors etc. See below
+for the example config file for J234318.41 (eclipsing BD):
+
+Lines starting with # are ignored (comments). The comments mingled with
+the configurations below explain how things are set up.
+
+###############################
+######  DATA DESCRIPTION ######
+###############################
+# location
+data_dir /Users/jmcc/Dropbox/EBLMs/J23431841
+out_dir /Users/jmcc/Dropbox/EBLMs/J23431841/output
+# data files, formats expected are either:
+# lc filter filename
+# rv instrument filename
+lc Clear NITES_J234318.41_Clear_20120829_F1_A14.lc.txt
+lc Clear NITES_J234318.41_Clear_20130923_F2_A14.lc.txt
+lc Clear NITES_J234318.41_Clear_20131010_F1_A14.lc.txt
+lc Clear NITES_J234318.41_Clear_20141001_F1_A14.lc.txt
+rv FIES J234318.41_NOT.rv
+rv SOPHIE J234318.41_SOPHIE.rv
+rv PARAS J234318.41_PARAS.rv
+###############################
+######  MCMC DESCRIPTION ######
+###############################
+# number of MCMC steps
+nsteps 10
+# scale MCMC nwalkers
+# nwalkers = walker_scaling * 4*n_parameters
+walker_scaling 1
+# MCMC parameters can be either:
+#   Fixed parameters:
+#        parameter_name F value
+#   Uniform prior parameters:
+#       parameter_name U seed_value weight prior_l prior_h
+#   No prior parameters:
+#       parameter_name N seed_value weight
+# walkers are normally distributed around (seed_value, weights)
+sbratio F 0.0
+r1_a U 0.029363 0.0001 0.02 0.04
+r2_a U 0.004665 0.0001 0.002 0.007
+incl U 89.6232 0.01 88.0 90.0
+t0 N 2453592.74192 0.001
+period N 16.9535452 0.0001
+ecc U 0.16035 0.001 0.1 0.2
+omega U 78.39513 0.1 70.0 90.0
+a_r1 U 31.650747 0.1 28.0 36.0
+ldc_1_1 F 0.3897
+ldc_1_2 F 0.1477
+q U 0.09649 0.001 0.05 0.145
+# systemic velocity parameters are instrument specific
+# they are best kept to the end of the config file and defined as:
+#   vsys U instrument seed_value weight prior_l prior_h
+vsys U FIES -21.133 0.1 -25.0 -15.0
+vsys U SOPHIE -21.122 0.1 -25.0 -15.0
+vsys U PARAS -20.896 0.1 -25.0 -15.0
+
+The config file will be read and all parameters are stored in the
+'config' object. Different numbers of instruments and filters
+should be handled automatically.
+
+The following output is made:
+    - plot of each variable parameter's walker
+    - corner plot of the post-burnin chain segment
+    - plot of data with fitted model
+    - output of the best fitting parameters
+
+Contributors:
+    James McCormac + James Blake
 """
 import sys
 import argparse as ap
@@ -12,11 +87,21 @@ import emcee
 import corner
 import ellc
 
+# TODO URGENT: make ldcs filter specifc as expected
+# TODO: eventually read in the Gaussian parameters
+# TODO: eventually account for all other binary params (3rd light etc)
+
+# use pylint as a syntax checker only
 # pylint: disable=invalid-name
 # pylint: disable=unused-variable
 # pylint: disable=no-member
 # pylint: disable=redefined-outer-name
 # pylint: disable=superfluous-parens
+# pylint: disable=too-many-arguments
+# pylint: disable=too-many-locals
+# pylint: disable=too-many-branches
+# pylint: disable=too-many-statements
+# pylint: disable=line-too-long
 
 def argParse():
     """
@@ -113,7 +198,6 @@ def readConfig(infile):
             config['no_prior'][param] = {'value': value,
                                          'weight': weight}
         # read fit parameters with Uniform priors
-        # TODO: eventually read in the Gaussian parameters
         elif sp[1] == 'U':
             if 'uniform_prior' not in config.keys():
                 config['uniform_prior'] = OrderedDict()
@@ -167,27 +251,24 @@ def readConfig(infile):
             sys.exit(1)
     return config
 
-def dataLoader(config, data_type):
+def loadPhot(config):
     """
-    Generic data loadng function
+    Generic photometry loadng function
 
-    This function works with phot and rvs
-    assuming the file format is:
+    This function assumes the file format is:
         time  measurment  error
 
     Parameters
     ----------
     config : array-like
         object containing all configuration parameters
-    data_type : string
-        type of data to read (e.g. lcs | rvs)
 
     Returns
     -------
     x_data : array-like
         array of time data
     y_data : array-like
-        array of measurement data (phot or rvs)
+        array of measurement data
     yerr_data : array-like
         array of errors on measurments
 
@@ -198,18 +279,56 @@ def dataLoader(config, data_type):
     x_data = OrderedDict()
     y_data = OrderedDict()
     yerr_data = OrderedDict()
-    for filt in config[data_type]:
+    for filt in config['lcs']:
         x_dat, y_dat, yerr_dat = [], [], []
-        for dat in config[data_type][filt]:
+        for dat in config['lcs'][filt]:
             infile = "{}/{}".format(config['data_dir'], dat)
-            x, y, e = np.loadtxt(infile, usecols=[0, 1, 2], unpack=True)
+            x, y, e = np.loadtxt(infile, usecols=[2, 3, 4], unpack=True)
             x_dat.append(x)
             y_dat.append(y)
             yerr_dat.append(e)
-        # stack the light curves into the global lc holder
+        # stack the light curves into the global holder
         x_data[filt] = np.hstack(x_dat)
         y_data[filt] = np.hstack(y_dat)
         yerr_data[filt] = np.hstack(yerr_dat)
+    return x_data, y_data, yerr_data
+
+def loadRvs(config):
+    """
+    Generic RV loadng function. This is subtley different
+    to loadPhot as phot uses defaultdict and RVs use
+    OrderedDict to hold the data.
+
+    This function assumes the file format is:
+        time  measurment  error
+
+    Parameters
+    ----------
+    config : array-like
+        object containing all configuration parameters
+
+    Returns
+    -------
+    x_data : array-like
+        array of time data
+    y_data : array-like
+        array of measurement data
+    yerr_data : array-like
+        array of errors on measurments
+
+    Raises
+    ------
+    None
+    """
+    x_data = OrderedDict()
+    y_data = OrderedDict()
+    yerr_data = OrderedDict()
+    for inst in config['rvs']:
+        infile = "{}/{}".format(config['data_dir'], config['rvs'][inst])
+        x, y, e = np.loadtxt(infile, usecols=[0, 1, 2], unpack=True)
+        x_data[inst] = x
+        y_data[inst] = y
+        yerr_data[inst] = e
     return x_data, y_data, yerr_data
 
 def light_curve_model(t_obs, t0, period, radius_1, radius_2,
@@ -238,7 +357,9 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
     incl : float
         inclination of binary orbit
     f_s : float
+        f_s = sqrt(e).sin(omega)
     f_c : float
+        f_c = sqrt(e).cos(omega)
     a : float
         semi-major axis of binary in units of r1 (a/r1)
     q : float
@@ -285,6 +406,42 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
     """
     Takes in the binary parameters and returns an ellc model
     for the radial velocity curve
+
+    Parameters
+    ----------
+    t_obs : array-like
+        array of times of observation
+    t0 : float
+        epoch of eclipsing system
+    period : float
+        orbital period of binary
+    radius_1 : float
+        radius of the primary component in units of a (r1/a)
+    radius_2 : float
+        radius of the secondary component in units of a (r2/a)
+    sbratio : float
+        surface brightness ratio between component 1 and 2
+    incl : float
+        inclination of binary orbit
+    f_s : float
+        f_s = sqrt(e).sin(omega)
+    f_c : float
+        f_c = sqrt(e).cos(omega)
+    a : float
+        semi-major axis of binary in units of r1 (a/r1)
+    q : float
+        mass ratio of the binary (m2/m1)
+    vsys : float
+        systemtic velocity for the target
+
+    Returns
+    -------
+    rv_model : array-like
+        rv model of the binary using input parameters
+
+    Raises
+    ------
+    None
     """
     rv1, _ = ellc.rv(t_obs=t_obs,
                      t_zero=t0,
@@ -301,13 +458,36 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
                      grid_2='default',
                      f_c=f_c,
                      f_s=f_s)
-    # account for the systemic
-    rv1 = rv1 + v_sys
-    return rv1
+    # account for the systemic velocity
+    rv_model = rv1 + v_sys
+    return rv_model
 
 def lnprior(theta, config, n_priors):
     """
-    Add docstring
+    Log prior function. This is used to ensure
+    walkers are exploring the range defined by
+    the priors. If not -np.inf is returned. Assuming
+    all is fine a 0.0 is returned to allow the walkers
+    to continue exploring the parameter space
+
+    Parameters
+    ----------
+    theta : array-like
+        current set of parameters from MCMC
+    config : array-like
+        object containing all configuration parameters
+    n_priors : int
+        number of parameters with priors
+
+    Returns
+    -------
+    lnprior : float
+        log prior of current sample (0.0 | -np.inf)
+
+    Raises
+    ------
+    ValueError
+        When prior limits are non-physical
     """
     priors = config['uniform_prior']
     for i, p in enumerate(priors):
@@ -317,8 +497,7 @@ def lnprior(theta, config, n_priors):
             ulim = priors[p]['prior_h']
             # check for incorrect priors
             if llim > ulim:
-                print('{} priors wrong! {} > {}'.format(p, llim, ulim))
-                sys.exit()
+                raise ValueError('{} priors wrong! {} > {}'.format(p, llim, ulim))
             if val < llim or val > ulim:
                 return -np.inf
         imax = i
@@ -330,8 +509,7 @@ def lnprior(theta, config, n_priors):
             ulim = priors['vsys'][p]['prior_h']
             # check for incorrect priors
             if llim > ulim:
-                print('{} priors wrong! {} > {}'.format(p, llim, ulim))
-                sys.exit()
+                raise ValueError('{} priors wrong! {} > {}'.format(p, llim, ulim))
             if val < llim or val > ulim:
                 return -np.inf
     return 0.0
@@ -339,6 +517,26 @@ def lnprior(theta, config, n_priors):
 def lnlike_sub(data_type, model, data, error):
     """
     Work out the log likelihood for a given subset of data
+
+    Parameters
+    ----------
+    data_type : string
+        type of data to evaluate (phot | rv)
+    model : array-like
+        current rv or phot model
+    data : array-like
+        data to compare to current model
+    error : array-like
+        error on the data measurements
+
+    Returns
+    -------
+    lnlike : float
+        log likelihood of model vs data
+
+    Raises
+    ------
+    None
     """
     if data_type == 'phot':
         if True in np.isnan(model) or np.min(model) <= 0:
@@ -364,6 +562,36 @@ def lnlike(theta, config,
            x_rv, y_rv, yerr_rv):
     """
     Work out the log likelihood for the proposed model
+    This used lnlike_sub to do the data specific calculation
+
+    Parameters
+    ----------
+    theta : array-like
+        current set of parameters from MCMC
+    config : array-like
+        object containing all configuration parameters
+    x_lc : array-like
+        x element of photometry (time)
+    y_lc : array-like
+        y element of photometry (relative flux)
+    yerr_lc : array-like
+        yerr element of photometry (flux error)
+    x_rv : array-like
+        x element of rvs (time)
+    y_rv : array-like
+        y element of rvs (RV)
+    yerr_rv : array-like
+        yerr element of rvs (RV error)
+
+    Returns
+    -------
+    lnlike : float
+        combined lnlike for global model
+
+    Raises
+    ------
+    IndexError
+        Raised whenever a parameter cannot be found in theta/config
     """
     # make copies to make coding next bit easier
     params = config['parameters']
@@ -502,7 +730,37 @@ def lnprob(theta, config, n_priors,
            x_lc, y_lc, yerr_lc,
            x_rv, y_rv, yerr_rv):
     """
-    Add docstring
+    Log probability function. Wraps lnprior and lnlike
+
+    Parameters
+    ----------
+    theta : array-like
+        current set of parameters from MCMC
+    config : array-like
+        object containing all configuration parameters
+    n_priors : int
+        number of parameters with priors
+    x_lc : array-like
+        x element of photometry (time)
+    y_lc : array-like
+        y element of photometry (relative flux)
+    yerr_lc : array-like
+        yerr element of photometry (flux error)
+    x_rv : array-like
+        x element of rvs (time)
+    y_rv : array-like
+        y element of rvs (RV)
+    yerr_rv : array-like
+        yerr element of rvs (RV error)
+
+    Returns
+    -------
+    lp : float
+        log probability of the current model proposal
+
+    Raises
+    ------
+    None
     """
     lp = lnprior(theta, config, n_priors)
     if not np.isfinite(lp):
@@ -513,16 +771,34 @@ def lnprob(theta, config, n_priors,
 
 def findBestParameter(param, config):
     """
-    Locate the best (or fixed, if fixed)
-    for a given parameter
+    Locate the best (or fixed) value
+    for a given parameter. Best fitting
+    values and fixed parameters are all
+    kept in config. Find them there.
+
+    Parameters
+    ----------
+    param : string
+        name of the parameter to look for
+    config : array-like
+        object containing all configuration parameters
+
+    Returns
+    -------
+    param_value : float
+        best fitting | fixed parameter value
+
+    Raises
+    ------
+    IndexError
+        whenever the parameter cannot be found in config
     """
     if param in best_params:
         return best_params[param]['value']
     elif param in config['fixed']:
-        return fixed[param]
+        return config['fixed'][param]
     else:
-        print('Cannot find {} in best_parameters | fixed'.format(param))
-        sys.exit(1)
+        raise IndexError('Cannot find {} in best_parameters | fixed'.format(param))
 
 if __name__ == "__main__":
     args = argParse()
@@ -556,8 +832,8 @@ if __name__ == "__main__":
     config['parameters'] = parameters
     config['weights'] = weights
     # READ IN THE DATA
-    x_lc, y_lc, yerr_lc = dataLoader(config, 'lcs')
-    x_rv, y_rv, yerr_rv = dataLoader(config, 'rvs')
+    x_lc, y_lc, yerr_lc = loadPhot(config)
+    x_rv, y_rv, yerr_rv = loadRvs(config)
     # set up the sampler
     ndim = len(initial)
     # recommended nwalkers is 4*n_parameters
@@ -613,12 +889,9 @@ if __name__ == "__main__":
     fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
     fig.clf()
 
-    # PAUSE for now until I have time to add plotting of final model!
-    # TODO: Finish addding plotting of final model
-    sys.exit()
-
     # extract the final parameters in a generic way
     # to plot the final model and data together
+    sbratio = findBestParameter('sbratio', config)
     r1_a = findBestParameter('r1_a', config)
     r2_a = findBestParameter('r2_a', config)
     incl = findBestParameter('incl', config)
@@ -630,7 +903,6 @@ if __name__ == "__main__":
     ldc_1_1 = findBestParameter('ldc_1_1', config)
     ldc_1_2 = findBestParameter('ldc_1_2', config)
     q = findBestParameter('q', config)
-    
 
     # take most likely set of parameters and plot the models
     # make a dense mesh of time points for the lcs and RVs
@@ -638,60 +910,71 @@ if __name__ == "__main__":
     # i.e. P = 1 and T0 = 0.0 in model
 
     # set up some param combos for plotting
-    x_model = np.linspace(-0.5, 0.5, 1000)
-    x_rv_model = np.linspace(t0, t0+period, 1000)
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
     ldcs_1 = [ldc_1_1, ldc_1_2]
 
+    # set up the plot
+    num_plots = len(config['lcs']) + 1
+    fig, ax = plt.subplots(num_plots, 1, figsize=(15, 15))
+    colours = ['k.', 'r.', 'g.', 'b.', 'c.']
+    pn = 0
+
     # final models
-    final_lc_model1 = light_curve_model(t_obs=x_model,
-                                        t0=0.0,
-                                        period=1.0,
-                                        radius_1=radius_1,
-                                        radius_2=radius_2,
-                                        sbratio=in_sbratio,
-                                        a=a,
-                                        q=q,
-                                        incl=incl,
-                                        f_s=f_s,
-                                        f_c=f_c,
-                                        ldc_1=ldcs_1)
-    /
+    x_model = np.linspace(-0.5, 0.5, 1000)
+    for filt in config['lcs']:
+        final_lc_model = light_curve_model(t_obs=x_model,
+                                           t0=0.0,
+                                           period=1.0,
+                                           radius_1=r1_a,
+                                           radius_2=r2_a,
+                                           sbratio=sbratio,
+                                           a=a_r1,
+                                           q=q,
+                                           incl=incl,
+                                           f_s=f_s,
+                                           f_c=f_c,
+                                           ldc_1=ldcs_1)
+        phase_lc = ((x_lc[filt] - t0)/period)%1
+        ax[pn].plot(phase_lc, y_lc[filt], 'k.')
+        ax[pn].plot(phase_lc-1, y_lc[filt], 'k.')
+        ax[pn].plot(x_model, final_lc_model, 'g-', lw=2)
+        ax[pn].set_xlim(-0.02, 0.02)
+        ax[pn].set_ylim(0.96, 1.02)
+        ax[pn].set_xlabel('Orbital Phase')
+        ax[pn].set_ylabel('Relative Flux')
+        pn += 1
+
+    # pick a reference instrument for scaling RVs
+    # to match the systemtic velocities
+    ref_inst = config['rvs'].keys()[0]
+    vsys_ref = best_params['vsys_{}'.format(ref_inst)]['value']
+    x_rv_model = np.linspace(t0, t0+period, 1000)
+    phase_rv_model = ((x_rv_model-t0)/period)%1
     final_rv_model = rv_curve_model(t_obs=x_rv_model,
                                     t0=t0,
                                     period=period,
-                                    radius_1=radius_1,
-                                    radius_2=radius_2,
-                                    sbratio=in_sbratio,
-                                    a=a,
+                                    radius_1=r1_a,
+                                    radius_2=r2_a,
+                                    sbratio=sbratio,
+                                    a=a_r1,
                                     q=q,
                                     incl=incl,
                                     f_s=f_s,
                                     f_c=f_c,
-                                    v_sys=v_sys1)
-
-    phase_lc1 = ((x_lc1 - t0)/period)%1
-    phase_rv1 = ((x_rv1 - t0)/period)%1
-    phase_rv2 = ((x_rv2 - t0)/period)%1
-    phase_rv3 = ((x_rv3 - t0)/period)%1
-    phase_rv_model = ((x_rv_model-t0)/period)%1
-
-    fig, ax = plt.subplots(2, 1, figsize=(15, 15))
-    ax[0].plot(phase_lc1, y_lc1, 'k.')
-    ax[0].plot(phase_lc1-1, y_lc1, 'k.')
-    ax[0].plot(x_model, final_lc_model1, 'g-', lw=2)
-    ax[0].set_xlim(-0.02, 0.02)
-    ax[0].set_ylim(0.96, 1.02)
-    ax[0].set_xlabel('Orbital Phase')
-    ax[0].set_ylabel('Relative Flux')
-    ax[1].plot(phase_rv1, y_rv1, 'k.')
-    ax[1].plot(phase_rv2, y_rv2 + v_sys2_diff, 'g.')
-    ax[1].plot(phase_rv3, y_rv3 + v_sys3_diff, 'b.')
-    ax[1].plot(phase_rv_model, final_rv_model, 'r-', lw=2)
-    ax[1].set_xlim(0, 1)
-    ax[1].set_xlabel('Orbital Phase')
-    ax[1].set_ylabel('Radial Velocity')
+                                    v_sys=vsys_ref)
+    # plot the RVs + model
+    for i, inst in enumerate(config['rvs']):
+        phase_rv = ((x_rv[inst] - t0)/period)%1
+        if inst == ref_inst:
+            ax[1].plot(phase_rv, y_rv[inst], colours[i])
+        else:
+            vsys_diff = vsys_ref - best_params['vsys_{}'.format(inst)]['value']
+            ax[1].plot(phase_rv, y_rv[inst] + vsys_diff, colours[i])
+    ax[pn].plot(phase_rv_model, final_rv_model, 'r-', lw=2)
+    ax[pn].set_xlim(0, 1)
+    ax[pn].set_xlabel('Orbital Phase')
+    ax[pn].set_ylabel('Radial Velocity')
     fig.savefig('{}/chain_{}steps_{}walkers_fitted_models.png'.format(outdir,
                                                                       nsteps,
                                                                       nwalkers))
