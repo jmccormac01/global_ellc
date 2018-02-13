@@ -1,13 +1,5 @@
-# -*- coding: latin-1 -*-
 """
 This is an attempt at a multi-instrument version of emcee_combined.py
-
-ToDo:
-    1. Need to generalise how to handle fixed parameters and
-       generalise how to handle the priors. Get ideas from
-       ellc emcee example
-    2. Generalise the handling of multiple instruments
-    4. Generalise how to spread out the walkers in the start
 """
 import sys
 import argparse as ap
@@ -29,6 +21,19 @@ import ellc
 def argParse():
     """
     Read in the command line arguments
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    args : argparse object
+        object with all command line args parsed
+
+    Raises
+    ------
+    None
     """
     p = ap.ArgumentParser()
     p.add_argument('config', help='path to config file')
@@ -42,6 +47,20 @@ def readConfig(infile):
         1. data location
         2. light curves and rvs
         3. input parameters with priors
+
+    Parameters
+    ----------
+    infile : string
+        path to the configuration file for a given object
+
+    Returns
+    -------
+    config : array-like
+        object containing all configuration parameters
+
+    Raises
+    ------
+    None
     """
     config = OrderedDict()
     f = open(infile).readlines()
@@ -126,7 +145,31 @@ def readConfig(infile):
 
 def dataLoader(config, data_type):
     """
-    Generic data loadng
+    Generic data loadng function
+
+    This function works with phot and rvs
+    assuming the file format is:
+        time  measurment  error
+
+    Parameters
+    ----------
+    config : array-like
+        object containing all configuration parameters
+    data_type : string
+        type of data to read (e.g. lcs | rvs)
+
+    Returns
+    -------
+    x_data : array-like
+        array of time data
+    y_data : array-like
+        array of measurement data (phot or rvs)
+    yerr_data : array-like
+        array of errors on measurments
+
+    Raises
+    ------
+    None
     """
     x_data = OrderedDict()
     y_data = OrderedDict()
@@ -150,7 +193,47 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
                       spots_1=None, spots_2=None):
     """
     Takes in the binary parameters and returns an ellc model
-    for the light curve
+    light curve. This can be used to generate models during
+    the fitting process, or the final model when the parameters
+    have been deteremined
+
+    Parameters
+    ----------
+    t_obs : array-like
+        array of times of observation
+    t0 : float
+        epoch of eclipsing system
+    period : float
+        orbital period of binary
+    radius_1 : float
+        radius of the primary component in units of a (r1/a)
+    radius_2 : float
+        radius of the secondary component in units of a (r2/a)
+    sbratio : float
+        surface brightness ratio between component 1 and 2
+    incl : float
+        inclination of binary orbit
+    f_s : float
+    f_c : float
+    a : float
+        semi-major axis of binary in units of r1 (a/r1)
+    q : float
+        mass ratio of the binary (m2/m1)
+    ldc_1 : array-like
+        LDCs for primary eclipse ([ldc_1_1, ldc_1_2], assumes quadratic law)
+    spots_1 : array-like
+        spot parameters for spot_1 [check order!]
+    spots_2 : array-like
+        spot parameters for spot_2 [check order!]
+
+    Returns
+    -------
+    lc_model : array-like
+        model of the binary using input parameters
+
+    Raises
+    ------
+    None
     """
     lc_model = ellc.lc(t_obs=t_obs,
                        t_zero=t0,
@@ -200,37 +283,8 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
 
 def lnprior(theta, config, n_priors):
     """
-    Needs generalising for priors
-
-    These are set for J234318.41
-
     Add docstring
     """
-    # floating ldcs
-    #radius_1, radius_2, incl, t0, \
-    #period, ecc, omega, a, ldc_1_1, ldc_1_2, \
-    #v_sys1, v_sys2, v_sys3, q = theta
-    #
-    # fixed ldcs
-    #radius_1, radius_2, incl, t0, \
-    #period, ecc, omega, a, v_sys1, v_sys2, \
-    #v_sys3, q = theta
-    #
-    # uniform priors for the parameters in theta
-    #if 0.02 <= radius_1 <= 0.04 and \
-    #    0.002 < radius_2 < 0.007 and \
-    #    88 < incl <= 90 and \
-    #    0.1 <= ecc <= 0.2 and \
-    #    28.0 <= a <= 36.0 and \
-    #    70 <= omega < 90 and \
-    #    -15 >= v_sys1 >= -25 and \
-    #    -15 >= v_sys2 >= -25 and \
-    #    -15 >= v_sys3 >= -25 and \
-    #    0.05 < q < 0.145:
-    #    return 0.0
-    #else:
-    #    return -np.inf
-    imax = 0
     priors = config['uniform_prior']
     for i, p in enumerate(priors):
         if p != 'vsys':
@@ -243,11 +297,11 @@ def lnprior(theta, config, n_priors):
                 sys.exit()
             if val < llim or val > ulim:
                 return -np.inf
-        imax = i
+    imax = i
     # there are still some values to check, hence vsys values
-    if imax < n_priors-1:
+    if imax < n_priors:
         for j, p in enumerate(priors['vsys']):
-            val = theta[imax+j+1]
+            val = theta[imax+j]
             llim = priors['vsys'][p]['prior_l']
             ulim = priors['vsys'][p]['prior_h']
             # check for incorrect priors
@@ -256,8 +310,7 @@ def lnprior(theta, config, n_priors):
                 sys.exit()
             if val < llim or val > ulim:
                 return -np.inf
-    else:
-        return 0.0
+    return 0.0
 
 def lnlike_sub(data_type, model, data, error):
     """
@@ -402,7 +455,7 @@ def lnlike(theta, config,
     # calculate lnlike of the radial velocities
     lnlike_rv = 0.0
     for inst in x_rv:
-        vsys = theta.index('vsys_{}'.format(inst))
+        vsys = theta[params.index('vsys_{}'.format(inst))]
         model_rv = rv_curve_model(t_obs=x_rv[inst],
                                   t0=t0,
                                   period=period,
@@ -438,38 +491,6 @@ if __name__ == "__main__":
     args = argParse()
     config = readConfig(args.config)
     outdir = config['out_dir']
-    # initial guesses of the parameters
-    #in_sbratio = 0.0           # fixed = set in lnlike
-    #in_radius_1 = 0.029363    #solar radii
-    #in_radius_2 = 0.004665     #solar radii
-    #in_incl = 89.6232
-    #in_t0 = 2453592.74192
-    #in_period = 16.9535452
-    #in_ecc = 0.16035
-    #in_omega = 78.39513
-    #in_a = 31.650747           #solar radii
-    #in_ldc_1_1 = 0.3897
-    #in_ldc_1_2 = 0.1477
-    #in_v_sys1 = -21.133
-    #in_v_sys2 = -21.122
-    #in_v_sys3 = -20.896
-    #in_q = 0.09649
-    # list of initial guesses
-    #           in_ldc_1_1,
-    #           in_ldc_1_2,
-    #initial = [in_radius_1,
-    #           in_radius_2,
-    #           in_incl,
-    #           in_t0,
-    #           in_period,
-    #           in_ecc,
-    #           in_omega,
-    #           in_a,
-    #           in_v_sys1,
-    #           in_v_sys2,
-    #           in_v_sys3,
-    #           in_q]
-
     # setting up the initial, parameters and weights lists
     # these are done as follows:
     #   uniform_priors first (forming the start of theta)
@@ -492,82 +513,25 @@ if __name__ == "__main__":
     parameters = parameters + [p for p in config['no_prior']]
     weights = weights + [config['no_prior'][c]['weight'] for c in config['no_prior']]
     # double check that the assignments have worked ok
-    assert len(initial) == len(parameters) == len(weights)
+    assert len(initial) == len(parameters) == len(weights), "intial != parameters != weights!!"
     # add the initial, parameters, weights to config
     config['initial'] = initial
     config['parameters'] = parameters
     config['weights'] = weights
-    # generate the parameters labels
-    #parameters = ['r1', 'r2', 'inc', 'T0', 'P', 'ecc',
-    #              'omega', 'a', 'ldc1', 'ldc2',
-    #              'v_sys1', 'v_sys2', 'v_sys3', 'q']
-    # used in plotting - with fixed ldcs
-    #parameters = ['r1', 'r2', 'inc', 'T0', 'P', 'ecc',
-    #              'omega', 'a', 'v_sys1', 'v_sys2',
-    #              'v_sys3', 'q']
-    # set up the weights for the initialisation
-    # these weights are used to scattter the walkers
-    # if using a prior make sure they are not scattered
-    # outside the range of the prior
-
-    # floating ldcs
-    #weights = [1e-4, 1e-4, 1e-2, 1e-3, 1e-4, 1e-3,
-    #           1e-1, 1e-2, 1e-3, 1e-3,
-    #           1e-1, 1e-1, 1e-1, 1e-3]
-    # fixed ldcs
-    #weights = [1e-4, 1e-4, 1e-2, 1e-3, 1e-4, 1e-3,
-    #           1e-1, 1e-2, 1e-1, 1e-1, 1e-1, 1e-3]
-
     # READ IN THE DATA
-    #datadir = '/Users/jmcc/Dropbox/EBLMs/J23431841'
-    #outdir = '{}/output'.format(datadir)
-    # phot
-    #lc1_files = ['NITES_J234318.41_Clear_20120829_F1_A14.lc.txt',
-    #             'NITES_J234318.41_Clear_20130923_F2_A14.lc.txt',
-    #             'NITES_J234318.41_Clear_20131010_F1_A14.lc.txt',
-    #             'NITES_J234318.41_Clear_20141001_F1_A14.lc.txt']
-    # read in multiple lc files that are to be treated the same
-    # e.g. same filter etc
-    #
-    #x_lc1, y_lc1, yerr_lc1 = [], [], []
-    #for lc_file in lc1_files:
-    #    x_lc, y_lc, yerr_lc = np.loadtxt('{}/{}'.format(datadir, lc_file),
-    #                                     usecols=[2, 3, 4], unpack=True)
-    #    x_lc1.append(x_lc)
-    #    y_lc1.append(y_lc)
-    #    yerr_lc1.append(yerr_lc)
-    ## stack the final lcs into one array
-    #x_lc1 = np.hstack(x_lc1)
-    #y_lc1 = np.hstack(y_lc1)
-    #yerr_lc1 = np.hstack(yerr_lc1)
-
-    # RVs
-    #rv1_file = 'J234318.41_NOT.rv'
-    #rv2_file = 'J234318.41_SOPHIE.rv'
-    #rv3_file = 'J234318.41_PARAS.rv'
-    ## read in possible multiple rv files
-    #x_rv1, y_rv1, yerr_rv1 = np.loadtxt('{}/{}'.format(datadir, rv1_file),
-    #                                    usecols=[0, 1, 2], unpack=True)
-    #x_rv2, y_rv2, yerr_rv2 = np.loadtxt('{}/{}'.format(datadir, rv2_file),
-    #                                    usecols=[0, 1, 2], unpack=True)
-    #x_rv3, y_rv3, yerr_rv3 = np.loadtxt('{}/{}'.format(datadir, rv3_file),
-    #                                    usecols=[0, 1, 2], unpack=True)
     x_lc, y_lc, yerr_lc = dataLoader(config, 'lcs')
     x_rv, y_rv, yerr_rv = dataLoader(config, 'rvs')
-
     # set up the sampler
     ndim = len(initial)
     nwalkers = 4*len(initial)#*8
-    #nsteps = 1000
     nsteps = 100
     # set up the starting positions
     pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
-
+    # set up the sampler
     sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob,
                                     args=(config, n_priors,
                                           x_lc, y_lc, yerr_lc,
                                           x_rv, y_rv, yerr_rv))
-
     # run the production chain
     print("Running MCMC...")
     sampler.run_mcmc(pos, nsteps, rstate0=np.random.get_state())
@@ -576,7 +540,6 @@ if __name__ == "__main__":
                np.c_[sampler.chain.reshape((-1, ndim))],
                delimiter=',', header=','.join(parameters))
     print("Done.")
-
     # plot and save the times series of each parameter
     for i, (initial_param, label) in enumerate(zip(initial, parameters)):
         fig, ax = plt.subplots(1, figsize=(10, 10))
@@ -588,58 +551,18 @@ if __name__ == "__main__":
                                                                nsteps,
                                                                nwalkers,
                                                                label))
-
-    # calculate the most likely set of parameters ###
-    # get user to input the burni. period, after they
-    # have seen the time series of each parameter
+    # calculate the most likely set of parameters
     burnin = int(raw_input('Enter burnin period: '))
     samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
-
-    # most likely set of parameters
+    # determine the most likely set of parameters
     best_params = OrderedDict()
     for i, param in enumerate(config['parameters']):
         best_params[param] = {'value': np.median(samples[:, i]),
                               'error': np.std(samples[:, i])}
 
-    #radius_1 = np.median(samples[:, 0])
-    #radius_2 = np.median(samples[:, 1])
-    #incl = np.median(samples[:, 2])
-    #t0 = np.median(samples[:, 3])
-    #period = np.median(samples[:, 4])
-    #ecc = np.median(samples[:, 5])
-    #omega = np.median(samples[:, 6])
-    #a = np.median(samples[:, 7])
-    #ldc_1_1 = np.median(samples[:, 8])
-    #ldc_1_2 = np.median(samples[:, 9])
-    #v_sys1 = np.median(samples[:, 8])
-    #v_sys2 = np.median(samples[:, 9])
-    #v_sys3 = np.median(samples[:, 10])
-    #q = np.median(samples[:, 11])
+    # TODO: print a summary of the best parameters/log it to a file
 
-    # correc the systematic velocities to the first one
-    #v_sys2_diff = v_sys1 - v_sys2
-    #v_sys3_diff = v_sys1 - v_sys3
-
-    #print('radius_1 = {} ± {}'.format(radius_1, np.std(samples[:, 0])))
-    #print('radius_2 = {} ± {}'.format(radius_2, np.std(samples[:, 1])))
-    #print('incl = {} ± {}'.format(incl, np.std(samples[:, 2])))
-    #print('t0 = {} ± {}'.format(t0, np.std(samples[:, 3])))
-    #print('period = {} ± {}'.format(period, np.std(samples[:, 4])))
-    #print('ecc = {} ± {}'.format(ecc, np.std(samples[:, 5])))
-    #print('omega = {} ± {}'.format(omega, np.std(samples[:, 6])))
-    #print('a = {} ± {}'.format(a, np.std(samples[:, 7])))
-    #print('ldc_1_1 = {} ± {}'.format(ldc_1_1, np.std(samples[:, 8])))
-    #print('ldc_1_2 = {} ± {}'.format(ldc_1_2, np.std(samples[:, 9])))
-    #print('v_sys1 = {} ± {}'.format(v_sys1, np.std(samples[:, 8])))
-    #print('v_sys2 = {} ± {}'.format(v_sys2, np.std(samples[:, 9])))
-    #print('v_sys2_diff = {}'.format(v_sys2_diff))
-    #print('v_sys3 = {} ± {}'.format(v_sys3, np.std(samples[:, 10])))
-    #print('v_sys3_diff = {}'.format(v_sys3_diff))
-    #print('q = {} ± {}'.format(q, np.std(samples[:, 11])))
-
-    # Plot triangle plot
-    #                            "$ldc1_1$",
-    #                            "$ldc1_2$",
+    # make a corner plot
     labels = ["$"+p+"$" for p in config['parameters']]
     fig = corner.corner(samples,
                         labels=parameters,
@@ -647,7 +570,9 @@ if __name__ == "__main__":
                         plot_contours=False)
     fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
     fig.clf()
-    
+
+    # PAUSE for now until I have time to add plotting of final model!
+    # TODO: Finish addding plotting of final model
     sys.exit()
 
     # take most likely set of parameters and plot the models
