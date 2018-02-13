@@ -1,7 +1,8 @@
-Scripts for running ellc
+# ELLC Scripts
 
-Do the following to prepare for ellc:
-   1. Add flags/dummy points to data using addFlagsDummyPoints.py
-   1. Combine any lightcurves that should to analysed togther using combineDataForEllc.py
-   1. Run ell\_emcee on the dataset
+   1. global_ellc.py - A generalised multi-instrument binary modelling code built on ellc
+
+# Contributors
+
+    James McCormac, James Blake
 
