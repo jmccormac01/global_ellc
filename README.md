@@ -80,10 +80,10 @@ The config file will be read and all parameters are stored in the
 should be handled automatically.
 The following output is made:
 
-    1. plot of each variable parameter's walker
-    1. corner plot of the post-burnin chain segment
-    1. plot of data with fitted model
-    1. output of the best fitting parameters
+   1. plot of each variable parameter's walker
+   1. corner plot of the post-burnin chain segment
+   1. plot of data with fitted model
+   1. output of the best fitting parameters
 
 # Contributors
 
