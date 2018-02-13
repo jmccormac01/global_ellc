@@ -297,7 +297,7 @@ def lnprior(theta, config, n_priors):
                 sys.exit()
             if val < llim or val > ulim:
                 return -np.inf
-    imax = i
+        imax = i
     # there are still some values to check, hence vsys values
     if imax < n_priors:
         for j, p in enumerate(priors['vsys']):
@@ -565,7 +565,7 @@ if __name__ == "__main__":
     # make a corner plot
     labels = ["$"+p+"$" for p in config['parameters']]
     fig = corner.corner(samples,
-                        labels=parameters,
+                        labels=labels,
                         truths=initial,
                         plot_contours=False)
     fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
