@@ -967,10 +967,10 @@ if __name__ == "__main__":
     for i, inst in enumerate(config['rvs']):
         phase_rv = ((x_rv[inst] - t0)/period)%1
         if inst == ref_inst:
-            ax[1].plot(phase_rv, y_rv[inst], colours[i])
+            ax[pn].plot(phase_rv, y_rv[inst], colours[i])
         else:
             vsys_diff = vsys_ref - best_params['vsys_{}'.format(inst)]['value']
-            ax[1].plot(phase_rv, y_rv[inst] + vsys_diff, colours[i])
+            ax[pn].plot(phase_rv, y_rv[inst] + vsys_diff, colours[i])
     ax[pn].plot(phase_rv_model, final_rv_model, 'r-', lw=2)
     ax[pn].set_xlim(0, 1)
     ax[pn].set_xlabel('Orbital Phase')
