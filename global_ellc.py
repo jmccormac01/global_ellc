@@ -780,7 +780,12 @@ if __name__ == "__main__":
                                           x_rv, y_rv, yerr_rv))
     # run the production chain
     print("Running MCMC...")
-    sampler.run_mcmc(pos, nsteps, rstate0=np.random.get_state())
+    # run the sampler with the progress status
+    #sampler.run_mcmc(pos, nsteps, rstate0=np.random.get_state())
+    for i, result in enumerate(sampler.sample(pos, iterations=nsteps,
+                               rstate0=np.random.get_state())):
+        if (i+1) % 100 == 0:
+            print("{0:5.1%}".format(float(i) / nsteps))
     print("Saving chain...")
     np.savetxt('{}/chain_{}steps_{}walkers.csv'.format(outdir, nsteps, nwalkers),
                np.c_[sampler.chain.reshape((-1, ndim))],
