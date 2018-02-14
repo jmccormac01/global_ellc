@@ -213,7 +213,7 @@ def loadPhot(config):
         x_dat, y_dat, yerr_dat = [], [], []
         for dat in config['lcs'][filt]:
             infile = "{}/{}".format(config['data_dir'], dat)
-            x, y, e = np.loadtxt(infile, usecols=[2, 3, 4], unpack=True)
+            x, y, e = np.loadtxt(infile, usecols=[0, 1, 2], unpack=True)
             x_dat.append(x)
             y_dat.append(y)
             yerr_dat.append(e)
