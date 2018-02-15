@@ -30,15 +30,16 @@ Example config file:
 data_dir /Users/jmcc/Dropbox/EBLMs/J23431841
 out_dir /Users/jmcc/Dropbox/EBLMs/J23431841/output
 # data files, formats expected are either:
-# lc filter filename
-# rv instrument filename
-lc Clear NITES_J234318.41_Clear_20120829_F1_A14.lc.txt
-lc Clear NITES_J234318.41_Clear_20130923_F2_A14.lc.txt
-lc Clear NITES_J234318.41_Clear_20131010_F1_A14.lc.txt
-lc Clear NITES_J234318.41_Clear_20141001_F1_A14.lc.txt
-rv FIES J234318.41_NOT.rv
-rv SOPHIE J234318.41_SOPHIE.rv
-rv PARAS J234318.41_PARAS.rv
+# lc filter filename time_col_id flux_col_id flux_err_col_id
+# rv instrument filename time_col_id rv_col_id rverr_col_id
+# col_ids are 0 indexed
+lc Clear NITES_J234318.41_Clear_20120829_F1_A14.lc.txt 2 3 4
+lc Clear NITES_J234318.41_Clear_20130923_F2_A14.lc.txt 2 3 4
+lc Clear NITES_J234318.41_Clear_20131010_F1_A14.lc.txt 2 3 4
+lc Clear NITES_J234318.41_Clear_20141001_F1_A14.lc.txt 2 3 4
+rv FIES J234318.41_NOT.rv 0 1 2
+rv SOPHIE J234318.41_SOPHIE.rv 0 1 2
+rv PARAS J234318.41_PARAS.rv 0 1 2
 ###############################
 ######  MCMC DESCRIPTION ######
 ###############################
