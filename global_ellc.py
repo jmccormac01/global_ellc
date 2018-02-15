@@ -8,6 +8,7 @@ Contributors:
 """
 import sys
 import argparse as ap
+from datetime import datetime
 from collections import defaultdict, OrderedDict
 import matplotlib
 matplotlib.use('QT5Agg')
@@ -51,7 +52,12 @@ def argParse():
     None
     """
     p = ap.ArgumentParser()
-    p.add_argument('config', help='path to config file')
+    p.add_argument('config',
+                   help='path to config file')
+    p.add_argument('--threads',
+                   help='number of threads to run',
+                   type=int,
+                   default=1)
     return p.parse_args()
 
 def readConfig(infile):
@@ -96,6 +102,8 @@ def readConfig(infile):
                 config['lcs'] = defaultdict(list)
             filt = sp[1]
             lc_file = sp[2]
+            cols = [int(c) for c in sp[3:]]
+            config[lc_file] = {'cols': cols}
             config['lcs'][filt].append(lc_file)
             continue
         elif sp[0] == 'rv':
@@ -103,6 +111,8 @@ def readConfig(infile):
                 config['rvs'] = OrderedDict()
             inst = sp[1]
             rv_file = sp[2]
+            cols = [int(c) for c in sp[3:]]
+            config[rv_file] = {'cols': cols}
             config['rvs'][inst] = rv_file
             continue
         elif sp[0] == 'nsteps':
@@ -213,7 +223,7 @@ def loadPhot(config):
         x_dat, y_dat, yerr_dat = [], [], []
         for dat in config['lcs'][filt]:
             infile = "{}/{}".format(config['data_dir'], dat)
-            x, y, e = np.loadtxt(infile, usecols=[0, 1, 2], unpack=True)
+            x, y, e = np.loadtxt(infile, usecols=config[dat]['cols'], unpack=True)
             x_dat.append(x)
             y_dat.append(y)
             yerr_dat.append(e)
@@ -777,8 +787,10 @@ if __name__ == "__main__":
     sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob,
                                     args=(config, n_priors,
                                           x_lc, y_lc, yerr_lc,
-                                          x_rv, y_rv, yerr_rv))
+                                          x_rv, y_rv, yerr_rv),
+                                    threads=args.threads)
     # run the production chain
+    tstart = datetime.utcnow()
     print("Running MCMC...")
     # run the sampler with the progress status
     #sampler.run_mcmc(pos, nsteps, rstate0=np.random.get_state())
@@ -791,6 +803,8 @@ if __name__ == "__main__":
                np.c_[sampler.chain.reshape((-1, ndim))],
                delimiter=',', header=','.join(parameters))
     print("Done.")
+    tend = datetime.utcnow()
+    print('Time to complete: {}'.format(tend - tstart))
     # plot and save the times series of each parameter
     for i, (initial_param, label) in enumerate(zip(initial, parameters)):
         fig, ax = plt.subplots(1, figsize=(10, 10))
