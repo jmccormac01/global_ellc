@@ -19,6 +19,7 @@ import corner
 import ellc
 
 # TODO URGENT: make ldcs filter specifc as expected
+# TODO: Add log of parameters both in and output
 # TODO: eventually read in the Gaussian parameters
 # TODO: eventually account for all other binary params (3rd light etc)
 
@@ -795,7 +796,7 @@ if __name__ == "__main__":
     # run the sampler with the progress status
     #sampler.run_mcmc(pos, nsteps, rstate0=np.random.get_state())
     for i, result in enumerate(sampler.sample(pos, iterations=nsteps,
-                               rstate0=np.random.get_state())):
+                                              rstate0=np.random.get_state())):
         if (i+1) % 100 == 0:
             print("{0:5.1%}".format(float(i) / nsteps))
     print("Saving chain...")
@@ -820,13 +821,18 @@ if __name__ == "__main__":
     burnin = int(raw_input('Enter burnin period: '))
     samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
     # determine the most likely set of parameters
+    # print them to screen and log them to disc
     best_params = OrderedDict()
-    for i, param in enumerate(config['parameters']):
-        best_params[param] = {'value': np.median(samples[:, i]),
-                              'error': np.std(samples[:, i])}
-        print("{}: {:.6f} +/- {:.6f}".format(param,
-                                             best_params[param]['value'],
-                                             best_params[param]['error']))
+    logfile = "{}/best_fitting_params.txt".format(outdir)
+    with open(logfile, 'w') as lf:
+        for i, param in enumerate(config['parameters']):
+            best_params[param] = {'value': np.median(samples[:, i]),
+                                  'error': np.std(samples[:, i])}
+            line = "{}: {:.6f} +/- {:.6f}".format(param,
+                                                  best_params[param]['value'],
+                                                  best_params[param]['error'])
+            print(line)
+            lf.write(line+"\n")
     # stick the best params in the config with everything else
     config['best_params'] = best_params
     # make a corner plot
@@ -888,8 +894,8 @@ if __name__ == "__main__":
         ax[pn].plot(phase_lc, y_lc[filt], 'k.')
         ax[pn].plot(phase_lc-1, y_lc[filt], 'k.')
         ax[pn].plot(x_model, final_lc_model, 'g-', lw=2)
-        ax[pn].set_xlim(-0.02, 0.02)
-        ax[pn].set_ylim(0.96, 1.02)
+        ax[pn].set_xlim(-0.1, 0.1)
+        ax[pn].set_ylim(0.98, 1.02)
         ax[pn].set_xlabel('Orbital Phase')
         ax[pn].set_ylabel('Relative Flux')
         pn += 1

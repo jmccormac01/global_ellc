@@ -54,4 +54,4 @@ if __name__ == "__main__":
         ax2.plot(ph-1, f, 'k.')
         plt.show()
     outfile = "{}.flux".format(args.infile)
-    np.savetxt(outfile, np.c_[t])
+    np.savetxt(outfile, np.c_[t, f, fe], fmt='%.6f %.6f %.6f', header='hjd flux_ratio error')
