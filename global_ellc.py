@@ -6,6 +6,7 @@ See the repository README.md for instructions
 Contributors:
     James McCormac + James Blake
 """
+import os
 import sys
 import argparse as ap
 from datetime import datetime
@@ -745,6 +746,8 @@ if __name__ == "__main__":
     args = argParse()
     config = readConfig(args.config)
     outdir = config['out_dir']
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
     # setting up the initial, parameters and weights lists
     # these are done as follows:
     #   uniform_priors first (forming the start of theta)
@@ -873,6 +876,7 @@ if __name__ == "__main__":
     num_plots = len(config['lcs']) + 1
     fig, ax = plt.subplots(num_plots, 1, figsize=(15, 15))
     colours = ['k.', 'r.', 'g.', 'b.', 'c.']
+    colours_rvs = ['ko', 'ro', 'go', 'bo', 'co']
     pn = 0
 
     # final models
@@ -922,10 +926,11 @@ if __name__ == "__main__":
     for i, inst in enumerate(config['rvs']):
         phase_rv = ((x_rv[inst] - t0)/period)%1
         if inst == ref_inst:
-            ax[pn].plot(phase_rv, y_rv[inst], colours[i])
+            ax[pn].errorbar(phase_rv, y_rv[inst], yerr=yerr_rv[inst], fmt=colours[i])
         else:
             vsys_diff = vsys_ref - best_params['vsys_{}'.format(inst)]['value']
-            ax[pn].plot(phase_rv, y_rv[inst] + vsys_diff, colours[i])
+            ax[pn].errorbar(phase_rv, y_rv[inst] + vsys_diff,
+                            yerr=yerr_rv[inst], fmt=colours[i])
     ax[pn].plot(phase_rv_model, final_rv_model, 'r-', lw=2)
     ax[pn].set_xlim(0, 1)
     ax[pn].set_xlabel('Orbital Phase')
