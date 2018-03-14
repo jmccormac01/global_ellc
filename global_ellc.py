@@ -341,8 +341,8 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
                        ld_1='quad',
                        shape_1='sphere',
                        shape_2='sphere',
-                       grid_1='default', # set these to default again later
-                       grid_2='default',
+                       grid_1='sparse', # set these to default again later
+                       grid_2='sparse',
                        f_c=f_c,
                        f_s=f_s,
                        spots_1=spots_1,
@@ -402,8 +402,8 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
                      q=q,
                      shape_1='sphere',
                      shape_2='sphere',
-                     grid_1='default',
-                     grid_2='default',
+                     grid_1='sparse',
+                     grid_2='sparse',
                      f_c=f_c,
                      f_s=f_s)
     # account for the systemic velocity
