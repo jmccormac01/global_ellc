@@ -191,6 +191,12 @@ def readConfig(infile):
         if x.lower() != 'y':
             print('Quiting!')
             sys.exit(1)
+    if 'uniform_prior' not in config.keys():
+        config['uniform_prior'] = []
+    if 'fixed' not in config.keys():
+        config['fixed'] =[]
+    if 'no_prior' not in config.keys():
+        config['no_prior'] = []
     return config
 
 def loadPhot(config):
@@ -307,7 +313,7 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
     q : float
         mass ratio of the binary (m2/m1)
     ldc_1 : array-like
-        LDCs for primary eclipse ([ldc_1_1, ldc_1_2], assumes quadratic law)
+        LDCs for primary eclipse ([ldc1_1, ldc1_2], assumes quadratic law)
     spots_1 : array-like
         spot parameters for spot_1 [check order!]
     spots_2 : array-like
@@ -610,22 +616,22 @@ def lnlike(theta, config,
         omega = fixed['omega']
     else:
         raise IndexError('Cannot find omega in lnlike')
-    # ldc_1_1
-    if 'ldc_1_1' in no_prior or 'ldc_1_1' in uniform:
-        ldc_1_1 = theta[params.index('ldc_1_1')]
-    elif 'ldc_1_1' in fixed:
-        ldc_1_1 = fixed['ldc_1_1']
+    # ldc1_1
+    if 'ldc1_1' in no_prior or 'ldc1_1' in uniform:
+        ldc1_1 = theta[params.index('ldc1_1')]
+    elif 'ldc1_1' in fixed:
+        ldc1_1 = fixed['ldc1_1']
     else:
-        raise IndexError('Cannot find ldc_1_1 in lnlike')
-    # ldc_1_2
-    if 'ldc_1_2' in no_prior or 'ldc_1_2' in uniform:
-        ldc_1_2 = theta[params.index('ldc_1_2')]
-    elif 'ldc_1_2' in fixed:
-        ldc_1_2 = fixed['ldc_1_2']
+        raise IndexError('Cannot find ldc1_1 in lnlike')
+    # ldc1_2
+    if 'ldc1_2' in no_prior or 'ldc1_2' in uniform:
+        ldc1_2 = theta[params.index('ldc1_2')]
+    elif 'ldc1_2' in fixed:
+        ldc1_2 = fixed['ldc1_2']
     else:
-        raise IndexError('Cannot find ldc_1_2 in lnlike')
+        raise IndexError('Cannot find ldc1_2 in lnlike')
     # tweaking parameters
-    ldcs_1 = [ldc_1_1, ldc_1_2]
+    ldcs_1 = [ldc1_1, ldc1_2]
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
 
@@ -858,8 +864,8 @@ if __name__ == "__main__":
     ecc = findBestParameter('ecc', config)
     omega = findBestParameter('omega', config)
     a_r1 = findBestParameter('a_r1', config)
-    ldc_1_1 = findBestParameter('ldc_1_1', config)
-    ldc_1_2 = findBestParameter('ldc_1_2', config)
+    ldc1_1 = findBestParameter('ldc1_1', config)
+    ldc1_2 = findBestParameter('ldc1_2', config)
     q = findBestParameter('q', config)
 
     # take most likely set of parameters and plot the models
@@ -870,7 +876,7 @@ if __name__ == "__main__":
     # set up some param combos for plotting
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
-    ldcs_1 = [ldc_1_1, ldc_1_2]
+    ldcs_1 = [ldc1_1, ldc1_2]
 
     # set up the plot
     num_plots = len(config['lcs']) + 1
