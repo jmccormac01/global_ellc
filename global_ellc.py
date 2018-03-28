@@ -20,7 +20,6 @@ import corner
 import ellc
 
 # TODO URGENT: make ldcs filter specifc as expected
-# TODO: Add log of parameters both in and output
 # TODO: eventually read in the Gaussian parameters
 # TODO: eventually account for all other binary params (3rd light etc)
 
@@ -272,8 +271,9 @@ def loadRvs(config):
     y_data = OrderedDict()
     yerr_data = OrderedDict()
     for inst in config['rvs']:
-        infile = "{}/{}".format(config['data_dir'], config['rvs'][inst])
-        x, y, e = np.loadtxt(infile, usecols=[0, 1, 2], unpack=True)
+        rv_file = config['rvs'][inst]
+        infile = "{}/{}".format(config['data_dir'], rv_file)
+        x, y, e = np.loadtxt(infile, usecols=config[rv_file]['cols'], unpack=True)
         x_data[inst] = x
         y_data[inst] = y
         yerr_data[inst] = e
