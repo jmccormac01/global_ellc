@@ -57,17 +57,17 @@ walker_scaling 1
 #       parameter_name N seed_value weight
 # walkers are normally distributed around (seed_value, weights)
 sbratio F 0.0
-r1_a U 0.029363 0.0001 0.02 0.04
-r2_a U 0.004665 0.0001 0.002 0.007
+r1_a U 0.1 0.0001 0.02 0.3
+r2_r1 U 0.08 0.0001 0.03 0.15
 incl U 89.6232 0.01 88.0 90.0
 t0 N 2453592.74192 0.001
 period N 16.9535452 0.0001
 ecc U 0.16035 0.001 0.1 0.2
 omega U 78.39513 0.1 70.0 90.0
-a_r1 U 31.650747 0.1 28.0 36.0
 ldc_1_1 F 0.3897
 ldc_1_2 F 0.1477
 q U 0.09649 0.001 0.05 0.145
+K U 10.0 5.0 15.0
 # systemic velocity parameters are instrument specific
 # they are best kept to the end of the config file and defined as:
 #   vsys U instrument seed_value weight prior_l prior_h
