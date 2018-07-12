@@ -900,7 +900,6 @@ if __name__ == "__main__":
     period = findBestParameter('period', config)
     ecc = findBestParameter('ecc', config)
     omega = findBestParameter('omega', config)
-    a_rs = findBestParameter('a_rs', config)
     ldc1_1 = findBestParameter('ldc1_1', config)
     ldc1_2 = findBestParameter('ldc1_2', config)
     q = findBestParameter('q', config)
@@ -917,6 +916,7 @@ if __name__ == "__main__":
 
     # derive some parameters from others
     r2_a = r2_r1 * r1_a
+    a_rs = (0.019771142*K*(1.+1./q)*period*np.sqrt(1.-ecc**2.)) / (np.sin(np.radians(incl)))
 
     # set up the plot
     num_plots = len(config['lcs']) + 1
