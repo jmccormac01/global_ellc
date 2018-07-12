@@ -903,6 +903,7 @@ if __name__ == "__main__":
     ldc1_1 = findBestParameter('ldc1_1', config)
     ldc1_2 = findBestParameter('ldc1_2', config)
     q = findBestParameter('q', config)
+    K = findBestParameter('K', config)
 
     # take most likely set of parameters and plot the models
     # make a dense mesh of time points for the lcs and RVs
