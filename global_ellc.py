@@ -19,7 +19,8 @@ import emcee
 import corner
 import ellc
 
-# TODO URGENT: make ldcs filter specifc as expected
+# TODO: URGENT: double check the weights for combining phot and rvs
+# TODO  URGENT: make ldcs filter specifc as expected
 # TODO: eventually read in the Gaussian parameters
 # TODO: eventually account for all other binary params (3rd light etc)
 
@@ -122,6 +123,9 @@ def readConfig(infile):
         elif sp[0] == 'walker_scaling':
             config['walker_scaling'] = int(sp[1])
             continue
+        elif sp[0] == 'thinning_factor':
+            config['thinning_factor'] = int(sp[1])
+            continue
         # read Fixed parameters
         if sp[1] == 'F':
             param = sp[0]
@@ -184,11 +188,16 @@ def readConfig(infile):
         defaults += 1
     # walker_scaling
     if 'walker_scaling' not in config.keys():
-        print('walker_scaling no supplied in the config file, defaulting to 1...')
+        print('walker_scaling not supplied in the config file, defaulting to 1...')
         config['walker_scaling'] = 1
         defaults += 1
+    # adds optional thinning factor for the MCMC sampling
+    if 'thinning_factor' not in config.keys():
+        print('thinning_factor for MCMC sampling not supplied, defaulting to 1 (no thinning)...')
+        config['thinning_factor'] = 1
+        defaults += 1
     if defaults > 0:
-        x = input('Accept the defaults above? (y | n): ')
+        x = raw_input('Accept the defaults above? (y | n): ')
         if x.lower() != 'y':
             print('Quiting!')
             sys.exit(1)
@@ -407,7 +416,8 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
                      grid_1='sparse',
                      grid_2='sparse',
                      f_c=f_c,
-                     f_s=f_s)
+                     f_s=f_s,
+                     flux_weighted=False)
     # account for the systemic velocity
     rv_model = rv1 + v_sys
     return rv_model
@@ -646,22 +656,46 @@ def lnlike(theta, config,
     b = np.cos(np.radians(incl)) / r1_a
     m_2 = 1.036149050206E-7*K*((K+K/q)**2)*period*((1.0-ecc**2.)**1.5) / (np.sin(np.radians(incl))**3.)
     m_1 = m_2/q
-    logg_1 = np.log(m_1) - (2.0*np.log(r1_a*a_rs)) + 4.437
+    #logg_1 = np.log(m_1) - (2.0*np.log(r1_a*a_rs)) + 4.437
 
     # Sanity check some parameters, inspiration taken from Liam's code
-    # pylint: disable=multiple-statements
-    if r2_r1 < 0: return -np.inf
-    if r1_a < 0: return -np.inf
-    if r2_a < 0: return -np.inf
-    if b < 0 or b > 1+r2_r1 or b > 1/r1_a: return -np.inf
-    if ecc < 0 or ecc >= 1: return -np.inf
-    if K < 0: return -np.inf
-    if q < 0: return -np.inf
-    if logg_1 < 0: return -np.inf
-    if m_2 < 0: return -np.inf
-    if f_c < -1 or f_c > 1: return -np.inf
-    if f_s < -1 or f_s > 1: return -np.inf
-    # pylint: enable=multiple-statements
+    if r2_r1 < 0:
+        print('r2_r1 violation...')
+        return -np.inf
+    if r1_a < 0:
+        print('r1_a violation...')
+        return -np.inf
+    if r2_a < 0:
+        print('r2_a violation...')
+        return -np.inf
+    if b < 0 or b > 1+r2_r1 or b > 1/r1_a:
+        print('b violation...')
+        return -np.inf
+    if ecc < 0 or ecc >= 1:
+        print('ecc violation...')
+        return -np.inf
+    if K < 0:
+        print('K violation...')
+        return -np.inf
+    if q < 0:
+        print('q violation...')
+        return -np.inf
+    #if logg_1 < 0:
+    #    print('logg_1 violation...')
+    #    return -np.inf
+    if m_2 < 0:
+        print('m_2 violation...')
+        return -np.inf
+    if f_c < -1 or f_c > 1:
+        print('f_c violation...')
+        return -np.inf
+    if f_s < -1 or f_s > 1:
+        print('f_s violation...')
+        return -np.inf
+    # my priors
+    if m_1 > 1.61 or m_1 < 1.11:
+        print('m_1={:.3f}, m_2={:.5f} violation...'.format(m_1, m_2))
+        return -np.inf
 
     # calculate lnlike of light curves
     lnlike_lc = 0.0
@@ -826,6 +860,7 @@ if __name__ == "__main__":
     nwalkers = 4*len(initial) * config['walker_scaling']
     # set the number of steps in the MCMC chain
     nsteps = config['nsteps']
+    thinning_factor = config['thinning_factor']
     # set up the starting positions
     pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
 
@@ -842,7 +877,8 @@ if __name__ == "__main__":
     # run the sampler with the progress status
     #sampler.run_mcmc(pos, nsteps, rstate0=np.random.get_state())
     for i, result in enumerate(sampler.sample(pos, iterations=nsteps,
-                                              rstate0=np.random.get_state())):
+                                              rstate0=np.random.get_state(),
+                                              thin=thinning_factor)):
         if (i+1) % 100 == 0:
             print("{0:5.1%}".format(float(i) / nsteps))
     print("Saving chain...")
@@ -870,9 +906,12 @@ if __name__ == "__main__":
     # print them to screen and log them to disc
     best_params = OrderedDict()
     logfile = "{}/best_fitting_params.txt".format(outdir)
+    best_pars_index = np.unravel_index(np.argmax(sampler.lnprobability),
+                                       (nwalkers, nsteps/thinning_factor))
+    best_pars = sampler.chain[best_pars_index[0], best_pars_index[1], :]
     with open(logfile, 'w') as lf:
         for i, param in enumerate(config['parameters']):
-            best_params[param] = {'value': np.median(samples[:, i]),
+            best_params[param] = {'value': best_pars[i],
                                   'error': np.std(samples[:, i])}
             line = "{}: {:.6f} +/- {:.6f}".format(param,
                                                   best_params[param]['value'],
@@ -918,6 +957,7 @@ if __name__ == "__main__":
     # derive some parameters from others
     r2_a = r2_r1 * r1_a
     a_rs = (0.019771142*K*(1.+1./q)*period*np.sqrt(1.-ecc**2.)) / (np.sin(np.radians(incl)))
+    print('a_rsun: {:.4}'.format(a_rs))
 
     # set up the plot
     num_plots = len(config['lcs']) + 1
@@ -946,8 +986,8 @@ if __name__ == "__main__":
         ax[pn].plot(phase_lc, y_lc[filt], 'k.')
         ax[pn].plot(phase_lc-1, y_lc[filt], 'k.')
         ax[pn].plot(x_model, final_lc_model, 'g-', lw=2)
-        ax[pn].set_xlim(-0.025, 0.025)
-        ax[pn].set_ylim(0.97, 1.02)
+        ax[pn].set_xlim(-0.04, 0.04)
+        ax[pn].set_ylim(0.99, 1.01)
         ax[pn].set_xlabel('Orbital Phase')
         ax[pn].set_ylabel('Relative Flux')
         pn += 1

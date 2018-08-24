@@ -16,10 +16,15 @@ from ldtk import LDPSetCreator
 # logg = 4.00, 0.15
 # z = 0.22, 0.13
 
+# WASP-115
+# Teff = 6500, 100
+# logg = 4.28, 0.10
+# z = 0.02, 0.10
+
 if __name__ == "__main__":
-    sc = LDPSetCreator(teff=(6340, 140),
-                       logg=(4.00, 0.15),
-                       z=(0.22, 0.13),
+    sc = LDPSetCreator(teff=(6500, 100),
+                       logg=(4.28, 0.10),
+                       z=(0.02, 0.10),
                        filters=[sdss_r])
     ps = sc.create_profiles()
     cq, eq = ps.coeffs_qd(do_mc=True)
