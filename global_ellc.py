@@ -23,6 +23,8 @@ import ellc
 # TODO  URGENT: make ldcs filter specifc as expected
 # TODO: eventually read in the Gaussian parameters
 # TODO: eventually account for all other binary params (3rd light etc)
+# TODO: run pylint to tidy this up and start generalising recent additons!
+# TODO: add outputing of m_2 and a_rs to file with errors
 
 # use pylint as a syntax checker only
 # pylint: disable=invalid-name
@@ -30,11 +32,17 @@ import ellc
 # pylint: disable=no-member
 # pylint: disable=redefined-outer-name
 # pylint: disable=superfluous-parens
-# pylint: disable=too-many-arguments
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-arguments pylint: disable=too-many-locals
 # pylint: disable=too-many-branches
 # pylint: disable=too-many-statements
 # pylint: disable=line-too-long
+
+# Constants - taken from https://arxiv.org/pdf/1510.07674.pdf
+MSUN = 1.3271244E20/6.67408E-11 # kg
+RSUN = 6.957E8 # m
+MJUP = 1.2668653E17/6.67408E-11 # kg
+RJUP = 7.1492E7 # m
+AU = 1.496E11 # m
 
 def argParse():
     """
@@ -60,6 +68,9 @@ def argParse():
                    help='number of threads to run',
                    type=int,
                    default=1)
+    p.add_argument('--v',
+                   help='increase verbosity',
+                   action='store_true')
     return p.parse_args()
 
 def readConfig(infile):
@@ -652,49 +663,64 @@ def lnlike(theta, config,
     # derive some parameters from others
     # constants for 'a' and 'm' from Harmanec & Prsa, arXiv:1106.1508v2
     r2_a = r2_r1 * r1_a
+    # semi-major axis in solar radii
     a_rs = (0.019771142*K*(1.+1./q)*period*np.sqrt(1.-ecc**2.)) / (np.sin(np.radians(incl)))
     b = np.cos(np.radians(incl)) / r1_a
+    # secondary mass in solar masses
     m_2 = 1.036149050206E-7*K*((K+K/q)**2)*period*((1.0-ecc**2.)**1.5) / (np.sin(np.radians(incl))**3.)
+    # primary mass in solar masses
     m_1 = m_2/q
-    #logg_1 = np.log(m_1) - (2.0*np.log(r1_a*a_rs)) + 4.437
+    logg_1 = np.log(m_1) - (2.0*np.log(r1_a*a_rs)) + 4.437
 
     # Sanity check some parameters, inspiration taken from Liam's code
     if r2_r1 < 0:
-        print('r2_r1 violation...')
+        if args.v:
+            print('r2_r1 violation...')
         return -np.inf
     if r1_a < 0:
-        print('r1_a violation...')
+        if args.v:
+            print('r1_a violation...')
         return -np.inf
     if r2_a < 0:
-        print('r2_a violation...')
+        if args.v:
+            print('r2_a violation...')
         return -np.inf
     if b < 0 or b > 1+r2_r1 or b > 1/r1_a:
-        print('b violation...')
+        if args.v:
+            print('b violation...')
         return -np.inf
     if ecc < 0 or ecc >= 1:
-        print('ecc violation...')
+        if args.v:
+            print('ecc violation...')
         return -np.inf
     if K < 0:
-        print('K violation...')
+        if args.v:
+            print('K violation...')
         return -np.inf
     if q < 0:
-        print('q violation...')
+        if args.v:
+            print('q violation...')
         return -np.inf
-    #if logg_1 < 0:
-    #    print('logg_1 violation...')
-    #    return -np.inf
+    if logg_1 < 0:
+        if args.v:
+           print('logg_1 violation...')
+        return -np.inf
     if m_2 < 0:
-        print('m_2 violation...')
+        if args.v:
+            print('m_2 violation...')
         return -np.inf
     if f_c < -1 or f_c > 1:
-        print('f_c violation...')
+        if args.v:
+            print('f_c violation...')
         return -np.inf
     if f_s < -1 or f_s > 1:
-        print('f_s violation...')
+        if args.v:
+            print('f_s violation...')
         return -np.inf
     # my priors
     if m_1 > 1.61 or m_1 < 1.11:
-        print('m_1={:.3f}, m_2={:.5f} violation...'.format(m_1, m_2))
+        if args.v:
+            print('m_1={:.3f}, m_2={:.5f} violation...'.format(m_1, m_2))
         return -np.inf
 
     # calculate lnlike of light curves
@@ -733,11 +759,68 @@ def lnlike(theta, config,
                                       v_sys=vsys)
             lnlike_rv += lnlike_sub('rv', model_rv, y_rv[inst], yerr_rv[inst])
 
-    # sum to get overall likelihood function, add RV stat if present
+    # Priors - take from Liams code to use Gaussians on those from spectroscopy
+    lnpriors = 0
+    # stellar mass prior
+    m_1_pr_0 = 1.31
+    m_1_pr_s = 0.10
+    ln_m_1 = -0.5*(((m_1-m_1_pr_0)/
+            m_1_pr_s)**2 + np.log(m_1_pr_s**2))
+    lnpriors += ln_m_1
+
+    # stellar radius prior
+    r_1_pr_0 = 1.36
+    r_1_pr_s = 0.18
+    ln_r_1 = -0.5*(((r1_a*a_rs-r_1_pr_0)/
+            r_1_pr_s)**2 + np.log(r_1_pr_s**2))
+    lnpriors += ln_r_1
+
+    # stellar logg prior
+    logg_1_pr_0 = 4.28
+    logg_1_pr_s = 0.10
+    ln_logg_1 = -0.5*(((logg_1-logg_1_pr_0)/
+            logg_1_pr_s)**2 + np.log(logg_1_pr_s**2))
+    lnpriors += ln_logg_1
+
+    # metalicity prior
+    #ln_M_H_ld = -0.5*(((M_H_ld-M_H_ld_pr_0)/
+    #        M_H_ld_pr_s)**2 + np.log(M_H_ld_pr_s**2))
+    #lnpriors += ln_M_H_ld
+
+    #ln_T_ld = -0.5*(((T_ld-T_ld_pr_0)/
+    #        T_ld_pr_s)**2 + np.log(T_ld_pr_s**2))
+    #lnpriors += ln_T_ld
+
+    # LDC 1 prior
+    #ln_u1 = -0.5*(((u1-u1_pr_0)/
+    #        u1_pr_s)**2 + np.log(u1_pr_s**2))
+    #lnpriors += ln_u1
+
+    # LDC 2 prior
+    #ln_u2 = -0.5*(((u2-u2_pr_0)/
+    #        u2_pr_s)**2 + np.log(u2_pr_s**2))
+    #lnpriors += ln_u2
+
+    # planet density priorm used for grazing systems
+    den_2_pr_0 = 0.8228
+    den_2_pr_s = 0.44
+    # get m_2 in grams for the density prior
+    m_2_grams = m_2 * MSUN * 1000.
+    r_2_cm = r2_a * a_rs * RSUN * 100
+    den_2 = (3.*m_2_grams) / (4.*np.pi*(r_2_cm**3.))
+    ln_den_2 = -0.5*(((den_2-den_2_pr_0)/
+               den_2_pr_s)**2 + np.log(den_2_pr_s**2))
+    lnpriors += ln_den_2
+
+    # create the final lnlike
+    lnlike = 0
+    # add the likelihood from the photometry
+    lnlike += lnlike_lc
+    #add RV lnlike if present
     if x_rv and y_rv and yerr_rv:
-        lnlike = lnlike_lc + lnlike_rv
-    else:
-        lnlike = lnlike_lc
+        lnlike += lnlike_rv
+    if lnpriors:
+        lnlike += lnpriors
     return lnlike
 
 def lnprob(theta, config, n_priors,
