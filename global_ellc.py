@@ -19,11 +19,8 @@ import emcee
 import corner
 import ellc
 
-# TODO: URGENT: double check the weights for combining phot and rvs
 # TODO  URGENT: make ldcs filter specifc as expected
-# TODO: eventually read in the Gaussian parameters
 # TODO: eventually account for all other binary params (3rd light etc)
-# TODO: run pylint to tidy this up and start generalising recent additons!
 # TODO: add outputing of m_2 and a_rs to file with errors
 
 # use pylint as a syntax checker only
@@ -182,6 +179,15 @@ def readConfig(infile):
                                                   'weight': weight,
                                                   'prior_l': prior_l,
                                                   'prior_h': prior_h}
+        elif sp[1] == 'E':
+            if 'external_prior' not in config.keys():
+                config['external_prior'] = OrderedDict()
+            param = sp[0]
+            value = float(sp[2])
+            weight = float(sp[3])
+            config['external_prior'][param] = {'value': value,
+                                               'weight': weight}
+
     # make some checks for all parameters required
     # RVs + vsys
     if 'rvs' in config.keys() and 'vsys' in config['uniform_prior'].keys():
@@ -218,6 +224,8 @@ def readConfig(infile):
         config['fixed'] = []
     if 'no_prior' not in config.keys():
         config['no_prior'] = []
+    if 'external_prior' not in config.keys():
+        config['external_prior'] = []
     return config
 
 def loadPhot(config):
@@ -571,6 +579,8 @@ def lnlike(theta, config,
     fixed = config['fixed']
     no_prior = config['no_prior']
     uniform = config['uniform_prior']
+    external = config['external_prior']
+
     # t0
     if 't0' in no_prior or 't0' in uniform:
         t0 = theta[params.index('t0')]
@@ -703,7 +713,7 @@ def lnlike(theta, config,
         return -np.inf
     if logg_1 < 0:
         if args.v:
-           print('logg_1 violation...')
+            print('logg_1 violation...')
         return -np.inf
     if m_2 < 0:
         if args.v:
@@ -716,11 +726,6 @@ def lnlike(theta, config,
     if f_s < -1 or f_s > 1:
         if args.v:
             print('f_s violation...')
-        return -np.inf
-    # my priors
-    if m_1 > 1.61 or m_1 < 1.11:
-        if args.v:
-            print('m_1={:.3f}, m_2={:.5f} violation...'.format(m_1, m_2))
         return -np.inf
 
     # calculate lnlike of light curves
@@ -759,68 +764,52 @@ def lnlike(theta, config,
                                       v_sys=vsys)
             lnlike_rv += lnlike_sub('rv', model_rv, y_rv[inst], yerr_rv[inst])
 
-    # Priors - take from Liams code to use Gaussians on those from spectroscopy
-    lnpriors = 0
+    # External priors: inspiration from Liam's code to use Gaussians
+    # priors from spectroscopy to constrain the fit
+    lnpriors_external = 0
+
     # stellar mass prior
-    m_1_pr_0 = 1.31
-    m_1_pr_s = 0.10
-    ln_m_1 = -0.5*(((m_1-m_1_pr_0)/
-            m_1_pr_s)**2 + np.log(m_1_pr_s**2))
-    lnpriors += ln_m_1
+    if 'm1' in external.keys():
+        m_1_pr_0 = external['m1']['value']
+        m_1_pr_s = external['m1']['weight']
+        ln_m_1 = -0.5*(((m_1-m_1_pr_0)/m_1_pr_s)**2 + np.log(m_1_pr_s**2))
+        lnpriors_external += ln_m_1
 
     # stellar radius prior
-    r_1_pr_0 = 1.36
-    r_1_pr_s = 0.18
-    ln_r_1 = -0.5*(((r1_a*a_rs-r_1_pr_0)/
-            r_1_pr_s)**2 + np.log(r_1_pr_s**2))
-    lnpriors += ln_r_1
+    if 'r1' in external.keys():
+        r_1_pr_0 = external['r1']['value']
+        r_1_pr_s = external['r1']['weight']
+        ln_r_1 = -0.5*(((r1_a*a_rs-r_1_pr_0)/r_1_pr_s)**2 + np.log(r_1_pr_s**2))
+        lnpriors_external += ln_r_1
 
     # stellar logg prior
-    logg_1_pr_0 = 4.28
-    logg_1_pr_s = 0.10
-    ln_logg_1 = -0.5*(((logg_1-logg_1_pr_0)/
-            logg_1_pr_s)**2 + np.log(logg_1_pr_s**2))
-    lnpriors += ln_logg_1
-
-    # metalicity prior
-    #ln_M_H_ld = -0.5*(((M_H_ld-M_H_ld_pr_0)/
-    #        M_H_ld_pr_s)**2 + np.log(M_H_ld_pr_s**2))
-    #lnpriors += ln_M_H_ld
-
-    #ln_T_ld = -0.5*(((T_ld-T_ld_pr_0)/
-    #        T_ld_pr_s)**2 + np.log(T_ld_pr_s**2))
-    #lnpriors += ln_T_ld
-
-    # LDC 1 prior
-    #ln_u1 = -0.5*(((u1-u1_pr_0)/
-    #        u1_pr_s)**2 + np.log(u1_pr_s**2))
-    #lnpriors += ln_u1
-
-    # LDC 2 prior
-    #ln_u2 = -0.5*(((u2-u2_pr_0)/
-    #        u2_pr_s)**2 + np.log(u2_pr_s**2))
-    #lnpriors += ln_u2
+    if 'logg1' in external.keys():
+        logg_1_pr_0 = external['logg1']['value']
+        logg_1_pr_s = external['logg1']['weight']
+        ln_logg_1 = -0.5*(((logg_1-logg_1_pr_0)/logg_1_pr_s)**2 + np.log(logg_1_pr_s**2))
+        lnpriors_external += ln_logg_1
 
     # planet density priorm used for grazing systems
-    den_2_pr_0 = 0.8228
-    den_2_pr_s = 0.44
-    # get m_2 in grams for the density prior
-    m_2_grams = m_2 * MSUN * 1000.
-    r_2_cm = r2_a * a_rs * RSUN * 100
-    den_2 = (3.*m_2_grams) / (4.*np.pi*(r_2_cm**3.))
-    ln_den_2 = -0.5*(((den_2-den_2_pr_0)/
-               den_2_pr_s)**2 + np.log(den_2_pr_s**2))
-    lnpriors += ln_den_2
+    if 'den2' in external.keys():
+        den_2_pr_0 = external['den2']['value']
+        den_2_pr_s = external['den2']['weight']
+        # get m_2 in grams for the density prior
+        m_2_grams = m_2 * MSUN * 1000.
+        r_2_cm = r2_a * a_rs * RSUN * 100
+        den_2 = (3.*m_2_grams) / (4.*np.pi*(r_2_cm**3.))
+        ln_den_2 = -0.5*(((den_2-den_2_pr_0)/den_2_pr_s)**2 + np.log(den_2_pr_s**2))
+        lnpriors_external += ln_den_2
 
     # create the final lnlike
     lnlike = 0
     # add the likelihood from the photometry
     lnlike += lnlike_lc
-    #add RV lnlike if present
+    # add RV lnlike if present
     if x_rv and y_rv and yerr_rv:
         lnlike += lnlike_rv
-    if lnpriors:
-        lnlike += lnpriors
+    # add the lnlike from any external priors
+    lnlike += lnpriors_external
+
     return lnlike
 
 def lnprob(theta, config, n_priors,
