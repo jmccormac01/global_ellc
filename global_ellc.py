@@ -197,27 +197,20 @@ def readConfig(infile):
             print('Mismatch in RVs + matching Vsys values, exiting!')
             sys.exit(1)
 
-    defaults = 0
+    # checks for some sensible defaults
     # nsteps for MCMC
     if 'nsteps' not in config.keys():
         print('nsteps not supplied in the config file, defaulting to 1000...')
         config['nsteps'] = 1000
-        defaults += 1
     # walker_scaling
     if 'walker_scaling' not in config.keys():
         print('walker_scaling not supplied in the config file, defaulting to 1...')
         config['walker_scaling'] = 1
-        defaults += 1
     # adds optional thinning factor for the MCMC sampling
     if 'thinning_factor' not in config.keys():
         print('thinning_factor for MCMC sampling not supplied, defaulting to 1 (no thinning)...')
         config['thinning_factor'] = 1
-        defaults += 1
-    if defaults > 0:
-        x = raw_input('Accept the defaults above? (y | n): ')
-        if x.lower() != 'y':
-            print('Quiting!')
-            sys.exit(1)
+    # adds missing keys if not used - so they can be checked later and not break the code
     if 'uniform_prior' not in config.keys():
         config['uniform_prior'] = []
     if 'fixed' not in config.keys():
@@ -768,37 +761,39 @@ def lnlike(theta, config,
     # priors from spectroscopy to constrain the fit
     lnpriors_external = 0
 
-    # stellar mass prior
-    if 'm1' in external.keys():
-        m_1_pr_0 = external['m1']['value']
-        m_1_pr_s = external['m1']['weight']
-        ln_m_1 = -0.5*(((m_1-m_1_pr_0)/m_1_pr_s)**2 + np.log(m_1_pr_s**2))
-        lnpriors_external += ln_m_1
+    # check if we have any external priors
+    if external:
+        # stellar mass prior
+        if 'm1' in external.keys():
+            m_1_pr_0 = external['m1']['value']
+            m_1_pr_s = external['m1']['weight']
+            ln_m_1 = -0.5*(((m_1-m_1_pr_0)/m_1_pr_s)**2 + np.log(m_1_pr_s**2))
+            lnpriors_external += ln_m_1
 
-    # stellar radius prior
-    if 'r1' in external.keys():
-        r_1_pr_0 = external['r1']['value']
-        r_1_pr_s = external['r1']['weight']
-        ln_r_1 = -0.5*(((r1_a*a_rs-r_1_pr_0)/r_1_pr_s)**2 + np.log(r_1_pr_s**2))
-        lnpriors_external += ln_r_1
+        # stellar radius prior
+        if 'r1' in external.keys():
+            r_1_pr_0 = external['r1']['value']
+            r_1_pr_s = external['r1']['weight']
+            ln_r_1 = -0.5*(((r1_a*a_rs-r_1_pr_0)/r_1_pr_s)**2 + np.log(r_1_pr_s**2))
+            lnpriors_external += ln_r_1
 
-    # stellar logg prior
-    if 'logg1' in external.keys():
-        logg_1_pr_0 = external['logg1']['value']
-        logg_1_pr_s = external['logg1']['weight']
-        ln_logg_1 = -0.5*(((logg_1-logg_1_pr_0)/logg_1_pr_s)**2 + np.log(logg_1_pr_s**2))
-        lnpriors_external += ln_logg_1
+        # stellar logg prior
+        if 'logg1' in external.keys():
+            logg_1_pr_0 = external['logg1']['value']
+            logg_1_pr_s = external['logg1']['weight']
+            ln_logg_1 = -0.5*(((logg_1-logg_1_pr_0)/logg_1_pr_s)**2 + np.log(logg_1_pr_s**2))
+            lnpriors_external += ln_logg_1
 
-    # planet density priorm used for grazing systems
-    if 'den2' in external.keys():
-        den_2_pr_0 = external['den2']['value']
-        den_2_pr_s = external['den2']['weight']
-        # get m_2 in grams for the density prior
-        m_2_grams = m_2 * MSUN * 1000.
-        r_2_cm = r2_a * a_rs * RSUN * 100
-        den_2 = (3.*m_2_grams) / (4.*np.pi*(r_2_cm**3.))
-        ln_den_2 = -0.5*(((den_2-den_2_pr_0)/den_2_pr_s)**2 + np.log(den_2_pr_s**2))
-        lnpriors_external += ln_den_2
+        # planet density priorm used for grazing systems
+        if 'den2' in external.keys():
+            den_2_pr_0 = external['den2']['value']
+            den_2_pr_s = external['den2']['weight']
+            # get m_2 in grams for the density prior
+            m_2_grams = m_2 * MSUN * 1000.
+            r_2_cm = r2_a * a_rs * RSUN * 100
+            den_2 = (3.*m_2_grams) / (4.*np.pi*(r_2_cm**3.))
+            ln_den_2 = -0.5*(((den_2-den_2_pr_0)/den_2_pr_s)**2 + np.log(den_2_pr_s**2))
+            lnpriors_external += ln_den_2
 
     # create the final lnlike
     lnlike = 0
@@ -977,6 +972,8 @@ if __name__ == "__main__":
     # determine the most likely set of parameters
     # print them to screen and log them to disc
     best_params = OrderedDict()
+
+    # TODO: add option for argmax, median or mode for best results
     logfile = "{}/best_fitting_params.txt".format(outdir)
     best_pars_index = np.unravel_index(np.argmax(sampler.lnprobability),
                                        (nwalkers, nsteps/thinning_factor))
@@ -1059,7 +1056,10 @@ if __name__ == "__main__":
         ax[pn].plot(phase_lc-1, y_lc[filt], 'k.')
         ax[pn].plot(x_model, final_lc_model, 'g-', lw=2)
         ax[pn].set_xlim(-0.04, 0.04)
-        ax[pn].set_ylim(0.99, 1.01)
+        # work out the y limit
+        yllim = np.median(sorted(y_lc[filt])[:21]) - 0.01)
+        yulim = np.median(sorted(y_lc[filt])[-21:]) + 0.01)
+        ax[pn].set_ylim(yllim, yulim)
         ax[pn].set_xlabel('Orbital Phase')
         ax[pn].set_ylabel('Relative Flux')
         pn += 1
