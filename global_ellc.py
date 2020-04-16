@@ -19,8 +19,6 @@ import emcee
 import corner
 import ellc
 
-# TODO  URGENT: make ldcs filter specifc as expected
-# TODO: eventually account for all other binary params (3rd light etc)
 # TODO: add outputing of m_2 and a_rs to file with errors
 
 # use pylint as a syntax checker only
@@ -94,8 +92,16 @@ def readConfig(infile):
     None
     """
     config = OrderedDict()
+    # set up empty lists
+    config['parameters'] = []
+    config['initials'] = []
+    config['weights'] = []
+    # count the number of priors
+    config['n_priors'] = 0
+    # read in the data
     f = open(infile).readlines()
     for line in f:
+        print(line.rstrip())
         # skip comment lines
         if line.startswith('#'):
             continue
@@ -134,68 +140,133 @@ def readConfig(infile):
         elif sp[0] == 'thinning_factor':
             config['thinning_factor'] = int(sp[1])
             continue
+        elif sp[0] == 'best_selection':
+            if sp[1] in ['median', 'argmax']:
+                config['best_selection'] = sp[1]
+                continue
+        elif sp[0] == 'r2_jup_limit':
+            # used for grazing systems to kill unphysical planet solutions
+            config['r2_jup_limit'] = float(sp[1])
+            continue
         # read Fixed parameters
         if sp[1] == 'F':
-            param = sp[0]
-            value = float(sp[2])
             if 'fixed' not in config.keys():
                 config['fixed'] = OrderedDict()
-            config['fixed'][param] = value
+            if sp[0] == 'vsys' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
+                try:
+                    param = sp[0]
+                    inst_filt = sp[2]
+                    param += "_{}".format(inst_filt)
+                    value = float(sp[3])
+                except IndexError:
+                    print("Fixed prior request not formatted correctly")
+                    print('PARAM F INST_FILT VALUE')
+                    print(line)
+                    sys.exit(1)
+                config['fixed'][param] = {'value': value}
+            else:
+                try:
+                    param = sp[0]
+                    value = float(sp[2])
+                except IndexError:
+                    print("Fixed prior request not formatted correctly")
+                    print('PARAM F VALUE')
+                    print(line)
+                    sys.exit(1)
+                config['fixed'][param] = {'value': value}
         # read fit parameters with No prior
         elif sp[1] == 'N':
             if 'no_prior' not in config.keys():
                 config['no_prior'] = OrderedDict()
-            param = sp[0]
-            value = float(sp[2])
-            weight = float(sp[3])
-            config['no_prior'][param] = {'value': value,
-                                         'weight': weight}
+            if sp[0] == 'vsys' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
+                try:
+                    param = sp[0]
+                    inst_filt = sp[2]
+                    param += "_{}".format(inst_filt)
+                    value = float(sp[3])
+                    weight = float(sp[4])
+                except IndexError:
+                    print("No prior request not formatted correctly")
+                    print('PARAM N INST_FILT VALUE WEIGHT')
+                    print(line)
+                    sys.exit(1)
+                config['no_prior'][param] = {'value': value,
+                                             'weight': weight}
+            else:
+                try:
+                    param = sp[0]
+                    value = float(sp[2])
+                    weight = float(sp[3])
+                except IndexError:
+                    print("No prior request not formatted correctly")
+                    print('PARAM N VALUE WEIGHT')
+                    print(line)
+                    sys.exit(1)
+                config['no_prior'][param] = {'value': value,
+                                             'weight': weight}
+            # append to the list to step over
+            config['parameters'].append(param)
+            config['initials'].append(value)
+            config['weights'].append(weight)
         # read fit parameters with Uniform priors
         elif sp[1] == 'U':
             if 'uniform_prior' not in config.keys():
                 config['uniform_prior'] = OrderedDict()
-            if sp[0] == 'vsys':
-                param = sp[0]
-                sys_inst = sp[2]
-                value = float(sp[3])
-                weight = float(sp[4])
-                prior_l = float(sp[5])
-                prior_h = float(sp[6])
-                if "vsys" not in config['uniform_prior'].keys():
-                    config['uniform_prior']['vsys'] = defaultdict(list)
-                config['uniform_prior']['vsys'][sys_inst] = {'value': value,
-                                                             'weight': weight,
-                                                             'prior_l': prior_l,
-                                                             'prior_h': prior_h}
+            if sp[0] == 'vsys' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
+                try:
+                    param = sp[0]
+                    inst_filt = sp[2]
+                    param += "_{}".format(inst_filt)
+                    value = float(sp[3])
+                    weight = float(sp[4])
+                    prior_l = float(sp[5])
+                    prior_h = float(sp[6])
+                except IndexError:
+                    print("Uniform prior request not formatted correctly")
+                    print('PARAM U INST_FILT VALUE WEIGHT PRIOR_LOW PRIOR_HIGH')
+                    print(line)
+                    sys.exit(1)
+                config['uniform_prior'][param] = {'value': value,
+                                                  'weight': weight,
+                                                  'prior_l': prior_l,
+                                                  'prior_h': prior_h}
             else:
-                param = sp[0]
-                value = float(sp[2])
-                weight = float(sp[3])
-                prior_l = float(sp[4])
-                prior_h = float(sp[5])
+                try:
+                    param = sp[0]
+                    value = float(sp[2])
+                    weight = float(sp[3])
+                    prior_l = float(sp[4])
+                    prior_h = float(sp[5])
+                except IndexError:
+                    print("Uniform prior request not formatted correctly")
+                    print('PARAM U VALUE WEIGHT PRIOR_LOW PRIOR_HIGH')
+                    print(line)
+                    sys.exit(1)
                 if 'uniform_prior' not in config.keys():
                     config['uniform_prior'] = OrderedDict()
                 config['uniform_prior'][param] = {'value': value,
                                                   'weight': weight,
                                                   'prior_l': prior_l,
                                                   'prior_h': prior_h}
+            # append to the list to step over
+            config['parameters'].append(param)
+            config['initials'].append(value)
+            config['weights'].append(weight)
+            config['n_priors'] += 1
         elif sp[1] == 'E':
             if 'external_prior' not in config.keys():
                 config['external_prior'] = OrderedDict()
-            param = sp[0]
-            value = float(sp[2])
-            weight = float(sp[3])
+            try:
+                param = sp[0]
+                value = float(sp[2])
+                weight = float(sp[3])
+            except IndexError:
+                print("External prior request not formatted correctly")
+                print('PARAM E VALUE WEIGHT')
+                print(line)
+                sys.exit(1)
             config['external_prior'][param] = {'value': value,
                                                'weight': weight}
-
-    # make some checks for all parameters required
-    # RVs + vsys
-    if 'rvs' in config.keys() and 'vsys' in config['uniform_prior'].keys():
-        try:
-            assert len(config['rvs']) == len(config['uniform_prior']['vsys']), "Mismatching RV + Vsys!"
-        except KeyError:
-            print('Mismatch in RVs + matching Vsys values, exiting!')
-            sys.exit(1)
 
     # checks for some sensible defaults
     # nsteps for MCMC
@@ -210,6 +281,11 @@ def readConfig(infile):
     if 'thinning_factor' not in config.keys():
         print('thinning_factor for MCMC sampling not supplied, defaulting to 1 (no thinning)...')
         config['thinning_factor'] = 1
+    # adds missing best selection, defaults to median
+    if 'best_selection' not in config.keys():
+        print('best parameter selection method for MCMC is missing, defaulting to median...')
+        config['best_selection'] = 'median'
+
     # adds missing keys if not used - so they can be checked later and not break the code
     if 'uniform_prior' not in config.keys():
         config['uniform_prior'] = []
@@ -304,7 +380,7 @@ def loadRvs(config):
 
 def light_curve_model(t_obs, t0, period, radius_1, radius_2,
                       sbratio, incl, f_s, f_c, a, q, ldc_1,
-                      spots_1=None, spots_2=None):
+                      spots_1=None, spots_2=None, light_3=0.0):
     """
     Takes in the binary parameters and returns an ellc model
     light curve. This can be used to generate models during
@@ -341,6 +417,9 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
         spot parameters for spot_1 [check order!]
     spots_2 : array-like
         spot parameters for spot_2 [check order!]
+    light_3 : float
+        3rd light component for this band
+        default = 0.0
 
     Returns
     -------
@@ -369,7 +448,8 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
                        f_c=f_c,
                        f_s=f_s,
                        spots_1=spots_1,
-                       spots_2=spots_2)
+                       spots_2=spots_2,
+                       light_3=light_3)
     return lc_model
 
 def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
@@ -434,7 +514,7 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
     rv_model = rv1 + v_sys
     return rv_model
 
-def lnprior(theta, config, n_priors):
+def lnprior(theta, config):
     """
     Log prior function. This is used to ensure
     walkers are exploring the range defined by
@@ -448,8 +528,6 @@ def lnprior(theta, config, n_priors):
         current set of parameters from MCMC
     config : array-like
         object containing all configuration parameters
-    n_priors : int
-        number of parameters with priors
 
     Returns
     -------
@@ -462,30 +540,17 @@ def lnprior(theta, config, n_priors):
         When prior limits are non-physical
     """
     priors = config['uniform_prior']
-    for i, p in enumerate(priors):
-        if p != 'vsys':
-            val = theta[i]
-            llim = priors[p]['prior_l']
-            ulim = priors[p]['prior_h']
-            # check for incorrect priors
-            if llim > ulim:
-                raise ValueError('{} priors wrong! {} > {}'.format(p, llim, ulim))
-            if val < llim or val > ulim:
-                return -np.inf
-        imax = i
-    # there are still some values to check, hence vsys values
-    if imax < n_priors:
-        # check RVs are included?
-        if 'rvs' in config.keys():
-            for j, p in enumerate(priors['vsys']):
-                val = theta[imax+j]
-                llim = priors['vsys'][p]['prior_l']
-                ulim = priors['vsys'][p]['prior_h']
-                # check for incorrect priors
-                if llim > ulim:
-                    raise ValueError('{} priors wrong! {} > {}'.format(p, llim, ulim))
-                if val < llim or val > ulim:
-                    return -np.inf
+    params = config['parameters']
+    for p in priors:
+        val = theta[params.index(p)]
+        llim = priors[p]['prior_l']
+        ulim = priors[p]['prior_h']
+        # check for incorrect priors
+        if llim > ulim:
+            raise ValueError('{} priors wrong! {} > {}'.format(p, llim, ulim))
+        if val < llim or val > ulim:
+            #print(p, llim, val, ulim)
+            return -np.inf
     return 0.0
 
 def lnlike_sub(data_type, model, data, error):
@@ -578,94 +643,90 @@ def lnlike(theta, config,
     if 't0' in no_prior or 't0' in uniform:
         t0 = theta[params.index('t0')]
     elif 't0' in fixed:
-        t0 = fixed['t0']
+        t0 = fixed['t0']['value']
     else:
         raise IndexError('Cannot find t0 in lnlike')
+
     # period
     if 'period' in no_prior or 'period' in uniform:
         period = theta[params.index('period')]
     elif 'period' in fixed:
-        period = fixed['period']
+        period = fixed['period']['value']
     else:
         raise IndexError('Cannot find period in lnlike')
+
     # radius_1
     if 'r1_a' in no_prior or 'r1_a' in uniform:
         r1_a = theta[params.index('r1_a')]
     elif 'r1_a' in fixed:
-        r1_a = fixed['r1_a']
+        r1_a = fixed['r1_a']['value']
     else:
         raise IndexError('Cannot find r1_a in lnlike')
+
     # radius_2
     if 'r2_r1' in no_prior or 'r2_r1' in uniform:
         r2_r1 = theta[params.index('r2_r1')]
     elif 'r2_r1' in fixed:
-        r2_r1 = fixed['r2_r1']
+        r2_r1 = fixed['r2_r1']['value']
     else:
         raise IndexError('Cannot find r2_r1 in lnlike')
+
     # sbratio
     if 'sbratio' in no_prior or 'sbratio' in uniform:
         sbratio = theta[params.index('sbratio')]
     elif 'sbratio' in fixed:
-        sbratio = fixed['sbratio']
+        sbratio = fixed['sbratio']['value']
     else:
         raise IndexError('Cannot find sbratio in lnlike')
+
     # q
     if 'q' in no_prior or 'q' in uniform:
         q = theta[params.index('q')]
     elif 'q' in fixed:
-        q = fixed['q']
+        q = fixed['q']['value']
     else:
         raise IndexError('Cannot find q in lnlike')
+
     # K -- assumed K2 for now
     if 'K' in no_prior or 'K' in uniform:
         K = theta[params.index('K')]
     elif 'K' in fixed:
-        K = fixed['K']
+        K = fixed['K']['value']
     else:
         raise IndexError('Cannot find K in lnlike')
+
     # incl
     if 'incl' in no_prior or 'incl' in uniform:
         incl = theta[params.index('incl')]
     elif 'incl' in fixed:
-        incl = fixed['incl']
+        incl = fixed['incl']['value']
     else:
         raise IndexError('Cannot find incl in lnlike')
+
     # ecc
     if 'ecc' in no_prior or 'ecc' in uniform:
         ecc = theta[params.index('ecc')]
     elif 'ecc' in fixed:
-        ecc = fixed['ecc']
+        ecc = fixed['ecc']['value']
     else:
         raise IndexError('Cannot find ecc in lnlike')
+
     # omega
     if 'omega' in no_prior or 'omega' in uniform:
         omega = theta[params.index('omega')]
     elif 'omega' in fixed:
-        omega = fixed['omega']
+        omega = fixed['omega']['value']
     else:
         raise IndexError('Cannot find omega in lnlike')
-    # ldc1_1
-    if 'ldc1_1' in no_prior or 'ldc1_1' in uniform:
-        ldc1_1 = theta[params.index('ldc1_1')]
-    elif 'ldc1_1' in fixed:
-        ldc1_1 = fixed['ldc1_1']
-    else:
-        raise IndexError('Cannot find ldc1_1 in lnlike')
-    # ldc1_2
-    if 'ldc1_2' in no_prior or 'ldc1_2' in uniform:
-        ldc1_2 = theta[params.index('ldc1_2')]
-    elif 'ldc1_2' in fixed:
-        ldc1_2 = fixed['ldc1_2']
-    else:
-        raise IndexError('Cannot find ldc1_2 in lnlike')
-    # tweaking parameters
-    ldcs_1 = [ldc1_1, ldc1_2]
+
+    # set up some combined params
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
 
     # derive some parameters from others
     # constants for 'a' and 'm' from Harmanec & Prsa, arXiv:1106.1508v2
     r2_a = r2_r1 * r1_a
+
     # semi-major axis in solar radii
     a_rs = (0.019771142*K*(1.+1./q)*period*np.sqrt(1.-ecc**2.)) / (np.sin(np.radians(incl)))
     b = np.cos(np.radians(incl)) / r1_a
@@ -674,6 +735,18 @@ def lnlike(theta, config,
     # primary mass in solar masses
     m_1 = m_2/q
     logg_1 = np.log(m_1) - (2.0*np.log(r1_a*a_rs)) + 4.437
+
+    # work out r2 in m - this can be used to apply a cut on
+    # r2 > physical planet size, e.g. > 3Rjup
+    r_2_m = (r2_a * a_rs * RSUN)
+    r_2_jup = r_2_m / RJUP
+
+    # apply a max cut on the secondary in r_jup - can be used if grazing planet
+    if 'r2_jup_limit' in config.keys():
+        if r_2_jup > config['r2_jup_limit']:
+            if args.v:
+                print('r2_jup > limit {} - violation...'.format(config['r2_jup_limit']))
+            return -np.inf
 
     # Sanity check some parameters, inspiration taken from Liam's code
     if r2_r1 < 0:
@@ -724,6 +797,32 @@ def lnlike(theta, config,
     # calculate lnlike of light curves
     lnlike_lc = 0.0
     for filt in x_lc:
+        ldc1_1_keyword = "ldc1_1_{}".format(filt)
+        ldc1_2_keyword = "ldc1_2_{}".format(filt)
+        light_3_keyword = "light_3_{}".format(filt)
+        # ldc1_1_filt
+        if ldc1_1_keyword in no_prior or ldc1_1_keyword in uniform:
+            ldc1_1 = theta[params.index(ldc1_1_keyword)]
+        elif ldc1_1_keyword in fixed:
+            ldc1_1 = fixed[ldc1_1_keyword]['value']
+        else:
+            raise IndexError('Cannot find {} in lnlike'.format(ldc1_1_keyword))
+        # ldc1_2_filt
+        if ldc1_2_keyword in no_prior or ldc1_2_keyword in uniform:
+            ldc1_2 = theta[params.index(ldc1_2_keyword)]
+        elif ldc1_2_keyword in fixed:
+            ldc1_2 = fixed[ldc1_2_keyword]['value']
+        else:
+            raise IndexError('Cannot find {} in lnlike'.format(ldc1_2_keyword))
+        # light_3_filt
+        if light_3_keyword in no_prior or light_3_keyword in uniform:
+            light_3 = theta[params.index(light_3_keyword)]
+        elif light_3_keyword in fixed:
+            light_3 = fixed[light_3_keyword]['value']
+        else:
+            raise IndexError('Cannot find {} in lnlike'.format(light_3_keyword))
+        # tweaking parameters
+        ldcs_1 = [ldc1_1, ldc1_2]
         model_lc = light_curve_model(t_obs=x_lc[filt],
                                      t0=t0,
                                      period=period,
@@ -735,7 +834,8 @@ def lnlike(theta, config,
                                      incl=incl,
                                      f_s=f_s,
                                      f_c=f_c,
-                                     ldc_1=ldcs_1)
+                                     ldc_1=ldcs_1,
+                                     light_3=light_3)
         lnlike_lc += lnlike_sub('phot', model_lc, y_lc[filt], yerr_lc[filt])
 
     # calculate lnlike of the radial velocities, if they exist
@@ -807,7 +907,7 @@ def lnlike(theta, config,
 
     return lnlike
 
-def lnprob(theta, config, n_priors,
+def lnprob(theta, config,
            x_lc, y_lc, yerr_lc,
            x_rv, y_rv, yerr_rv):
     """
@@ -819,8 +919,6 @@ def lnprob(theta, config, n_priors,
         current set of parameters from MCMC
     config : array-like
         object containing all configuration parameters
-    n_priors : int
-        number of parameters with priors
     x_lc : array-like
         x element of photometry (time)
     y_lc : array-like
@@ -843,7 +941,7 @@ def lnprob(theta, config, n_priors,
     ------
     None
     """
-    lp = lnprior(theta, config, n_priors)
+    lp = lnprior(theta, config)
     if not np.isfinite(lp):
         return -np.inf
     return lp + lnlike(theta, config,
@@ -877,7 +975,7 @@ def findBestParameter(param, config):
     if param in best_params:
         return best_params[param]['value']
     elif param in config['fixed']:
-        return config['fixed'][param]
+        return config['fixed'][param]['value']
     else:
         raise IndexError('Cannot find {} in best_parameters | fixed'.format(param))
 
@@ -887,33 +985,7 @@ if __name__ == "__main__":
     outdir = config['out_dir']
     if not os.path.exists(outdir):
         os.mkdir(outdir)
-    # setting up the initial, parameters and weights lists
-    # these are done as follows:
-    #   uniform_priors first (forming the start of theta)
-    #   vsys entries, which may not exist
-    #   no_priors last, looping over theta and counting n_priors will skip these
-    initial = [config['uniform_prior'][c]['value'] for c in config['uniform_prior'] if c != "vsys"]
-    parameters = [p for p in config['uniform_prior'] if p != "vsys"]
-    weights = [config['uniform_prior'][c]['weight'] for c in config['uniform_prior'] if c != "vsys"]
-    # add the different systemic velocities
-    if 'vsys' in config['uniform_prior'].keys():
-        initial = initial + \
-                  [config['uniform_prior']['vsys'][c]['value'] for c in config['uniform_prior']['vsys']]
-        parameters = parameters + \
-                     ["vsys_"+c for c in config['uniform_prior']['vsys']]
-        weights = weights + \
-                  [config['uniform_prior']['vsys'][c]['weight'] for c in config['uniform_prior']['vsys']]
-    n_priors = len(initial)
-    # now add the no priors on to the end
-    initial = initial + [config['no_prior'][c]['value'] for c in config['no_prior']]
-    parameters = parameters + [p for p in config['no_prior']]
-    weights = weights + [config['no_prior'][c]['weight'] for c in config['no_prior']]
-    # double check that the assignments have worked ok
-    assert len(initial) == len(parameters) == len(weights), "intial != parameters != weights!!"
-    # add the initial, parameters, weights to config
-    config['initial'] = initial
-    config['parameters'] = parameters
-    config['weights'] = weights
+
     # READ IN THE DATA
     x_lc, y_lc, yerr_lc = loadPhot(config)
     if 'rvs' in config.keys():
@@ -921,20 +993,20 @@ if __name__ == "__main__":
     else:
         x_rv, y_rv, yerr_rv = None, None, None
     # set up the sampler
-    ndim = len(initial)
+    ndim = len(config['initials'])
     # recommended nwalkers is 4*n_parameters
     # more walkers can help find the global minima, hence optional scaling
-    nwalkers = 4*len(initial) * config['walker_scaling']
+    nwalkers = 4*ndim*config['walker_scaling']
     # set the number of steps in the MCMC chain
     nsteps = config['nsteps']
     thinning_factor = config['thinning_factor']
     # set up the starting positions
-    pos = [initial + weights*np.random.randn(ndim) for i in range(nwalkers)]
+    pos = [config['initials'] + config['weights']*np.random.randn(ndim) for i in range(nwalkers)]
 
     # set up the sampler
     # if no RVs, pass None for each RV value so lnlike can take care of that
     sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob,
-                                    args=(config, n_priors,
+                                    args=(config,
                                           x_lc, y_lc, yerr_lc,
                                           x_rv, y_rv, yerr_rv),
                                     threads=args.threads)
@@ -951,12 +1023,13 @@ if __name__ == "__main__":
     print("Saving chain...")
     np.savetxt('{}/chain_{}steps_{}walkers.csv'.format(outdir, nsteps, nwalkers),
                np.c_[sampler.chain.reshape((-1, ndim))],
-               delimiter=',', header=','.join(parameters))
+               delimiter=',', header=','.join(config['parameters']))
     print("Done.")
     tend = datetime.utcnow()
     print('Time to complete: {}'.format(tend - tstart))
     # plot and save the times series of each parameter
-    for i, (initial_param, label) in enumerate(zip(initial, parameters)):
+    for i, (initial_param, label) in enumerate(zip(config['initials'],
+                                                   config['parameters'])):
         fig, ax = plt.subplots(1, figsize=(10, 10))
         ax.plot(sampler.chain[:, :, i].T, color="k", alpha=0.4)
         ax.axhline(initial_param, color="#888888", lw=2)
@@ -972,28 +1045,33 @@ if __name__ == "__main__":
     # determine the most likely set of parameters
     # print them to screen and log them to disc
     best_params = OrderedDict()
-
-    # TODO: add option for argmax, median or mode for best results
     logfile = "{}/best_fitting_params.txt".format(outdir)
-    best_pars_index = np.unravel_index(np.argmax(sampler.lnprobability),
-                                       (nwalkers, nsteps/thinning_factor))
-    best_pars = sampler.chain[best_pars_index[0], best_pars_index[1], :]
     with open(logfile, 'w') as lf:
+        # work out the argmax index
+        best_pars_index = np.unravel_index(np.argmax(sampler.lnprobability),
+                                           (nwalkers, nsteps/thinning_factor))
+        best_pars = sampler.chain[best_pars_index[0], best_pars_index[1], :]
+        # loop over the parameters - pick the best ones using the selected method
         for i, param in enumerate(config['parameters']):
-            best_params[param] = {'value': best_pars[i],
-                                  'error': np.std(samples[:, i])}
+            if config['best_selection'] == 'argmax':
+                best_params[param] = {'value': best_pars[i],
+                                      'error': np.std(samples[:, i])}
+            else:
+                best_params[param] = {'value': np.median(samples[:, i]),
+                                      'error': np.std(samples[:, i])}
             line = "{}: {:.6f} +/- {:.6f}".format(param,
                                                   best_params[param]['value'],
                                                   best_params[param]['error'])
             print(line)
             lf.write(line+"\n")
+
     # stick the best params in the config with everything else
     config['best_params'] = best_params
     # make a corner plot
-    labels = ["$"+p+"$" for p in config['parameters']]
+    labels = ["$"+p.replace('_','')+"$" for p in config['parameters']]
     fig = corner.corner(samples,
                         labels=labels,
-                        truths=initial,
+                        truths=config['initials'],
                         plot_contours=False)
     fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
     fig.clf()
@@ -1008,8 +1086,6 @@ if __name__ == "__main__":
     period = findBestParameter('period', config)
     ecc = findBestParameter('ecc', config)
     omega = findBestParameter('omega', config)
-    ldc1_1 = findBestParameter('ldc1_1', config)
-    ldc1_2 = findBestParameter('ldc1_2', config)
     q = findBestParameter('q', config)
     K = findBestParameter('K', config)
 
@@ -1021,7 +1097,6 @@ if __name__ == "__main__":
     # set up some param combos for plotting
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
-    ldcs_1 = [ldc1_1, ldc1_2]
 
     # derive some parameters from others
     r2_a = r2_r1 * r1_a
@@ -1039,6 +1114,10 @@ if __name__ == "__main__":
     # final models
     x_model = np.linspace(-0.5, 0.5, 1000)
     for filt in config['lcs']:
+        ldc1_1 = findBestParameter('ldc1_1_{}'.format(filt), config)
+        ldc1_2 = findBestParameter('ldc1_2_{}'.format(filt), config)
+        light_3 = findBestParameter('light_3_{}'.format(filt), config)
+        ldcs_1 = [ldc1_1, ldc1_2]
         final_lc_model = light_curve_model(t_obs=x_model,
                                            t0=0.0,
                                            period=1.0,
@@ -1050,18 +1129,20 @@ if __name__ == "__main__":
                                            incl=incl,
                                            f_s=f_s,
                                            f_c=f_c,
-                                           ldc_1=ldcs_1)
+                                           ldc_1=ldcs_1,
+                                           light_3=light_3)
         phase_lc = ((x_lc[filt] - t0)/period)%1
         ax[pn].plot(phase_lc, y_lc[filt], 'k.')
         ax[pn].plot(phase_lc-1, y_lc[filt], 'k.')
         ax[pn].plot(x_model, final_lc_model, 'g-', lw=2)
         ax[pn].set_xlim(-0.04, 0.04)
         # work out the y limit
-        yllim = np.median(sorted(y_lc[filt])[:21]) - 0.01)
-        yulim = np.median(sorted(y_lc[filt])[-21:]) + 0.01)
+        yllim = np.median(sorted(y_lc[filt])[:21]) - 0.01
+        yulim = np.median(sorted(y_lc[filt])[-21:]) + 0.01
         ax[pn].set_ylim(yllim, yulim)
         ax[pn].set_xlabel('Orbital Phase')
         ax[pn].set_ylabel('Relative Flux')
+        ax[pn].set_title(filt)
         pn += 1
 
     # plot RVs if we have them
@@ -1102,3 +1183,4 @@ if __name__ == "__main__":
     fig.savefig('{}/chain_{}steps_{}walkers_fitted_models.png'.format(outdir,
                                                                       nsteps,
                                                                       nwalkers))
+
