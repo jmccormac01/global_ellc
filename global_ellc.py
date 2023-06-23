@@ -11,8 +11,6 @@ import sys
 import argparse as ap
 from datetime import datetime
 from collections import defaultdict, OrderedDict
-import matplotlib
-matplotlib.use('QT5Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import emcee
@@ -408,7 +406,7 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
     f_c : float
         f_c = sqrt(e).cos(omega)
     a : float
-        semi-major axis of binary in units of r1 (a/r1)
+        semi-major axis of binary in units of rsun
     q : float
         mass ratio of the binary (m2/m1)
     ldc_1 : array-like
@@ -479,7 +477,7 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
     f_c : float
         f_c = sqrt(e).cos(omega)
     a : float
-        semi-major axis of binary in units of r1 (a/r1)
+        semi-major axis of binary in units of rsun
     q : float
         mass ratio of the binary (m2/m1)
     vsys : float
@@ -1040,16 +1038,16 @@ if __name__ == "__main__":
                                                                nwalkers,
                                                                label))
     # calculate the most likely set of parameters
-    burnin = int(raw_input('Enter burnin period: '))
+    burnin = int(input('Enter burnin period: '))
     samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
     # determine the most likely set of parameters
     # print them to screen and log them to disc
     best_params = OrderedDict()
-    logfile = "{}/best_fitting_params.txt".format(outdir)
+    logfile = "{}/best_fitting_params_{}nsteps_{}nwalkers.txt".format(outdir, nsteps, nwalkers)
     with open(logfile, 'w') as lf:
         # work out the argmax index
         best_pars_index = np.unravel_index(np.argmax(sampler.lnprobability),
-                                           (nwalkers, nsteps/thinning_factor))
+                                           (nwalkers, int(nsteps/thinning_factor)))
         best_pars = sampler.chain[best_pars_index[0], best_pars_index[1], :]
         # loop over the parameters - pick the best ones using the selected method
         for i, param in enumerate(config['parameters']):
@@ -1135,7 +1133,7 @@ if __name__ == "__main__":
         ax[pn].plot(phase_lc, y_lc[filt], 'k.')
         ax[pn].plot(phase_lc-1, y_lc[filt], 'k.')
         ax[pn].plot(x_model, final_lc_model, 'g-', lw=2)
-        ax[pn].set_xlim(-0.04, 0.04)
+        ax[pn].set_xlim(-0.15, 0.15)
         # work out the y limit
         yllim = np.median(sorted(y_lc[filt])[:21]) - 0.01
         yulim = np.median(sorted(y_lc[filt])[-21:]) + 0.01
