@@ -25,9 +25,9 @@ from ldtk import LDPSetCreator
 # logg = 4.3, 0.20
 # z = 0.16, 0.11
 
-# NGTS-Jb
-# Teff = 4600, 150
-# logg =4.5, 0.2
+# NGTS-10b
+# Teff = 4400, 100
+# logg =4.595, 0.019
 # z = -0.02. 0.12
 
 # setting up new filters
@@ -75,14 +75,15 @@ Bj = ldtkf.TabulatedFilter('Bj',
                                      0.452,0.196,0.049,0.011,
                                      0.022,0.004,0.000,0.000]))
 
+# TODO add speculoos I+Z
 
 
 
 if __name__ == "__main__":
-    sc = LDPSetCreator(teff=(4600, 150),
-                       logg=(4.5, 0.2),
+    sc = LDPSetCreator(teff=(4400, 100),
+                       logg=(4.595, 0.019),
                        z=(-0.02, 0.12),
-                       filters=[Bj])
+                       filters=[ngts])
     ps = sc.create_profiles()
     cq, eq = ps.coeffs_qd(do_mc=True)
     print('LDC_1 {:.4f} {:.4f}'.format(cq[0][0], eq[0][0]))
