@@ -8,16 +8,22 @@ Contributors:
 """
 import os
 import sys
+import pickle
 import argparse as ap
 from datetime import datetime
 from collections import defaultdict, OrderedDict
 import matplotlib.pyplot as plt
 import numpy as np
 import emcee
-import corner
 import ellc
+from publications.plots.defaults import (
+    general,
+    one_by_one,
+    two_by_one,
+    three_by_one)
 
-# TODO: add outputing of m_2 and a_rs to file with errors
+# TODO: add support for ldc_2
+# TODO: move corner plot to separate file, defaults breaks it
 
 # use pylint as a syntax checker only
 # pylint: disable=invalid-name
@@ -25,10 +31,12 @@ import ellc
 # pylint: disable=no-member
 # pylint: disable=redefined-outer-name
 # pylint: disable=superfluous-parens
-# pylint: disable=too-many-arguments pylint: disable=too-many-locals
+# pylint: disable=too-many-arguments
+# pylint: disable=too-many-locals
 # pylint: disable=too-many-branches
 # pylint: disable=too-many-statements
 # pylint: disable=line-too-long
+# pylint: disable=consider-using-f-string
 
 # Constants - taken from https://arxiv.org/pdf/1510.07674.pdf
 MSUN = 1.3271244E20/6.67408E-11 # kg
@@ -120,14 +128,23 @@ def readConfig(infile):
             config[lc_file] = {'cols': cols}
             config['lcs'][filt].append(lc_file)
             continue
-        elif sp[0] == 'rv':
-            if "rvs" not in config.keys():
-                config['rvs'] = OrderedDict()
+        elif sp[0] == 'rv1':
+            if "rvs1" not in config.keys():
+                config['rvs1'] = OrderedDict()
             inst = sp[1]
             rv_file = sp[2]
             cols = [int(c) for c in sp[3:]]
             config[rv_file] = {'cols': cols}
-            config['rvs'][inst] = rv_file
+            config['rvs1'][inst] = rv_file
+            continue
+        elif sp[0] == 'rv2':
+            if "rvs2" not in config.keys():
+                config['rvs2'] = OrderedDict()
+            inst = sp[1]
+            rv_file = sp[2]
+            cols = [int(c) for c in sp[3:]]
+            config[rv_file] = {'cols': cols}
+            config['rvs2'][inst] = rv_file
             continue
         elif sp[0] == 'nsteps':
             config['nsteps'] = int(sp[1])
@@ -142,15 +159,11 @@ def readConfig(infile):
             if sp[1] in ['median', 'argmax']:
                 config['best_selection'] = sp[1]
                 continue
-        elif sp[0] == 'r2_jup_limit':
-            # used for grazing systems to kill unphysical planet solutions
-            config['r2_jup_limit'] = float(sp[1])
-            continue
         # read Fixed parameters
         if sp[1] == 'F':
             if 'fixed' not in config.keys():
                 config['fixed'] = OrderedDict()
-            if sp[0] == 'vsys' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
+            if sp[0] == 'vsys1' or sp[0] == 'vsys2' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
                 try:
                     param = sp[0]
                     inst_filt = sp[2]
@@ -176,7 +189,7 @@ def readConfig(infile):
         elif sp[1] == 'N':
             if 'no_prior' not in config.keys():
                 config['no_prior'] = OrderedDict()
-            if sp[0] == 'vsys' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
+            if sp[0] == 'vsys1' or sp[0] == 'vsys2' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
                 try:
                     param = sp[0]
                     inst_filt = sp[2]
@@ -210,7 +223,7 @@ def readConfig(infile):
         elif sp[1] == 'U':
             if 'uniform_prior' not in config.keys():
                 config['uniform_prior'] = OrderedDict()
-            if sp[0] == 'vsys' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
+            if sp[0] == 'vsys1' or sp[0] == 'vsys2' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
                 try:
                     param = sp[0]
                     inst_filt = sp[2]
@@ -337,7 +350,7 @@ def loadPhot(config):
         yerr_data[filt] = np.hstack(yerr_dat)
     return x_data, y_data, yerr_data
 
-def loadRvs(config):
+def loadRvs(config, primary=True):
     """
     Generic RV loadng function. This is subtley different
     to loadPhot as phot uses defaultdict and RVs use
@@ -350,6 +363,8 @@ def loadRvs(config):
     ----------
     config : array-like
         object containing all configuration parameters
+    primary : boolean
+        Is this RV1 or RV2?
 
     Returns
     -------
@@ -367,8 +382,14 @@ def loadRvs(config):
     x_data = OrderedDict()
     y_data = OrderedDict()
     yerr_data = OrderedDict()
-    for inst in config['rvs']:
-        rv_file = config['rvs'][inst]
+
+    if primary:
+        rv_type = "rvs1"
+    else:
+        rv_type = "rvs2"
+
+    for inst in config[rv_type]:
+        rv_file = config[rv_type][inst]
         infile = "{}/{}".format(config['data_dir'], rv_file)
         x, y, e = np.loadtxt(infile, usecols=config[rv_file]['cols'], unpack=True)
         x_data[inst] = x
@@ -451,7 +472,7 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
     return lc_model
 
 def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
-                   sbratio, incl, f_s, f_c, a, q, v_sys):
+                   sbratio, incl, f_s, f_c, a, q, v_sys1, v_sys2):
     """
     Takes in the binary parameters and returns an ellc model
     for the radial velocity curve
@@ -480,37 +501,42 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
         semi-major axis of binary in units of rsun
     q : float
         mass ratio of the binary (m2/m1)
-    vsys : float
-        systemtic velocity for the target
+    vsys1 : float
+        systemtic velocity for the target primary
+    vsys2 : float
+        systemtic velocity for the target secondary
 
     Returns
     -------
-    rv_model : array-like
-        rv model of the binary using input parameters
+    rv_model1 : array-like
+        rv model of the primary using input parameters
+    rv_model2 : array-like
+        rv model of the secondary using input parameters
 
     Raises
     ------
     None
     """
-    rv1, _ = ellc.rv(t_obs=t_obs,
-                     t_zero=t0,
-                     period=period,
-                     radius_1=radius_1,
-                     radius_2=radius_2,
-                     incl=incl,
-                     sbratio=sbratio,
-                     a=a,
-                     q=q,
-                     shape_1='sphere',
-                     shape_2='sphere',
-                     grid_1='sparse',
-                     grid_2='sparse',
-                     f_c=f_c,
-                     f_s=f_s,
-                     flux_weighted=False)
+    rv1, rv2 = ellc.rv(t_obs=t_obs,
+                       t_zero=t0,
+                       period=period,
+                       radius_1=radius_1,
+                       radius_2=radius_2,
+                       incl=incl,
+                       sbratio=sbratio,
+                       a=a,
+                       q=q,
+                       shape_1='sphere',
+                       shape_2='sphere',
+                       grid_1='sparse',
+                       grid_2='sparse',
+                       f_c=f_c,
+                       f_s=f_s,
+                       flux_weighted=False)
     # account for the systemic velocity
-    rv_model = rv1 + v_sys
-    return rv_model
+    rv_model1 = rv1 + v_sys1
+    rv_model2 = rv2 + v_sys2
+    return rv_model1, rv_model2
 
 def lnprior(theta, config):
     """
@@ -582,7 +608,7 @@ def lnlike_sub(data_type, model, data, error):
             inv_sigma2 = 1.0/(error**2)
             eq_p1 = (data-model)**2*inv_sigma2 - np.log(inv_sigma2)
             lnlike = -0.5*(np.sum(eq_p1) - np.log(len(data) + 1))
-    elif data_type == 'rv':
+    elif data_type in ('rv1', 'rv2'):
         if True in np.isnan(model):
             lnlike = -np.inf
         else:
@@ -596,7 +622,8 @@ def lnlike_sub(data_type, model, data, error):
 
 def lnlike(theta, config,
            x_lc, y_lc, yerr_lc,
-           x_rv, y_rv, yerr_rv):
+           x_rv1, y_rv1, yerr_rv1,
+           x_rv2, y_rv2, yerr_rv2):
     """
     Work out the log likelihood for the proposed model
     This used lnlike_sub to do the data specific calculation
@@ -613,12 +640,18 @@ def lnlike(theta, config,
         y element of photometry (relative flux)
     yerr_lc : array-like
         yerr element of photometry (flux error)
-    x_rv : array-like
-        x element of rvs (time) | None
-    y_rv : array-like
-        y element of rvs (RV) | None
-    yerr_rv : array-like
-        yerr element of rvs (RV error) | None
+    x_rv1 : array-like
+        x element of rvs for primary (time) | None
+    y_rv1 : array-like
+        y element of rvs for primary (RV) | None
+    yerr_rv1 : array-like
+        yerr element of rvs for primary (RV error) | None
+    x_rv2 : array-like
+        x element of rvs for secondary (time) | None
+    y_rv2 : array-like
+        y element of rvs for secondary (RV) | None
+    yerr_rv2 : array-like
+        yerr element of rvs for secondary (RV error) | None
 
     Returns
     -------
@@ -669,6 +702,14 @@ def lnlike(theta, config,
     else:
         raise IndexError('Cannot find r2_r1 in lnlike')
 
+    # radius_2
+    if 'a_rs' in no_prior or 'a_rs' in uniform:
+        a_rs = theta[params.index('a_rs')]
+    elif 'a_rs' in fixed:
+        a_rs = fixed['a_rs']['value']
+    else:
+        raise IndexError('Cannot find r2_r1 in lnlike')
+
     # sbratio
     if 'sbratio' in no_prior or 'sbratio' in uniform:
         sbratio = theta[params.index('sbratio')]
@@ -685,13 +726,21 @@ def lnlike(theta, config,
     else:
         raise IndexError('Cannot find q in lnlike')
 
-    # K -- assumed K2 for now
-    if 'K' in no_prior or 'K' in uniform:
-        K = theta[params.index('K')]
-    elif 'K' in fixed:
-        K = fixed['K']['value']
-    else:
-        raise IndexError('Cannot find K in lnlike')
+    # K1
+    #if 'K1' in no_prior or 'K1' in uniform:
+    #    K1 = theta[params.index('K1')]
+    #elif 'K1' in fixed:
+    #    K1 = fixed['K1']['value']
+    #else:
+    #    raise IndexError('Cannot find K1 in lnlike')
+
+    # K2
+    #if 'K2' in no_prior or 'K2' in uniform:
+    #    K2 = theta[params.index('K2')]
+    #elif 'K2' in fixed:
+    #    K2 = fixed['K2']['value']
+    #else:
+    #    raise IndexError('Cannot find K2 in lnlike')
 
     # incl
     if 'incl' in no_prior or 'incl' in uniform:
@@ -721,30 +770,34 @@ def lnlike(theta, config,
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
 
+
     # derive some parameters from others
     # constants for 'a' and 'm' from Harmanec & Prsa, arXiv:1106.1508v2
     r2_a = r2_r1 * r1_a
 
     # semi-major axis in solar radii
-    a_rs = (0.019771142*K*(1.+1./q)*period*np.sqrt(1.-ecc**2.)) / (np.sin(np.radians(incl)))
+    #a_rs = (0.019771142*K1*(1.+1./q)*period*np.sqrt(1.-ecc**2.)) / (np.sin(np.radians(incl)))
     b = np.cos(np.radians(incl)) / r1_a
+
+    # TODO: Revise this section on derived parameters!!!
+
     # secondary mass in solar masses
-    m_2 = 1.036149050206E-7*K*((K+K/q)**2)*period*((1.0-ecc**2.)**1.5) / (np.sin(np.radians(incl))**3.)
+    #m_2 = 1.036149050206E-7*K*((K+K/q)**2)*period*((1.0-ecc**2.)**1.5) / (np.sin(np.radians(incl))**3.)
     # primary mass in solar masses
-    m_1 = m_2/q
-    logg_1 = np.log(m_1) - (2.0*np.log(r1_a*a_rs)) + 4.437
+    #m_1 = m_2/q
+    #logg_1 = np.log(m_1) - (2.0*np.log(r1_a*a_rs)) + 4.437
 
     # work out r2 in m - this can be used to apply a cut on
     # r2 > physical planet size, e.g. > 3Rjup
-    r_2_m = (r2_a * a_rs * RSUN)
-    r_2_jup = r_2_m / RJUP
+    #r_2_m = (r2_a * a_rs * RSUN)
+    #r_2_jup = r_2_m / RJUP
 
     # apply a max cut on the secondary in r_jup - can be used if grazing planet
-    if 'r2_jup_limit' in config.keys():
-        if r_2_jup > config['r2_jup_limit']:
-            if args.v:
-                print('r2_jup > limit {} - violation...'.format(config['r2_jup_limit']))
-            return -np.inf
+    #if 'r2_jup_limit' in config.keys():
+    #    if r_2_jup > config['r2_jup_limit']:
+    #        if args.v:
+    #            print('r2_jup > limit {} - violation...'.format(config['r2_jup_limit']))
+    #        return -np.inf
 
     # Sanity check some parameters, inspiration taken from Liam's code
     if r2_r1 < 0:
@@ -759,7 +812,7 @@ def lnlike(theta, config,
         if args.v:
             print('r2_a violation...')
         return -np.inf
-    if b < 0 or b > 1+r2_r1 or b > 1/r1_a:
+    if b < 0 or b > 1+r2_r1:
         if args.v:
             print('b violation...')
         return -np.inf
@@ -767,21 +820,9 @@ def lnlike(theta, config,
         if args.v:
             print('ecc violation...')
         return -np.inf
-    if K < 0:
-        if args.v:
-            print('K violation...')
-        return -np.inf
     if q < 0:
         if args.v:
             print('q violation...')
-        return -np.inf
-    if logg_1 < 0:
-        if args.v:
-            print('logg_1 violation...')
-        return -np.inf
-    if m_2 < 0:
-        if args.v:
-            print('m_2 violation...')
         return -np.inf
     if f_c < -1 or f_c > 1:
         if args.v:
@@ -791,6 +832,22 @@ def lnlike(theta, config,
         if args.v:
             print('f_s violation...')
         return -np.inf
+    #if K1 < 0:
+    #    if args.v:
+    #        print('K1 violation...')
+    #    return -np.inf
+    #if K2 < 0:
+    #    if args.v:
+    #        print('K2 violation...')
+    #    return -np.inf
+    #if logg_1 < 0:
+    #    if args.v:
+    #        print('logg_1 violation...')
+    #    return -np.inf
+    #if m_2 < 0:
+    #    if args.v:
+    #        print('m_2 violation...')
+    #    return -np.inf
 
     # calculate lnlike of light curves
     lnlike_lc = 0.0
@@ -837,77 +894,101 @@ def lnlike(theta, config,
         lnlike_lc += lnlike_sub('phot', model_lc, y_lc[filt], yerr_lc[filt])
 
     # calculate lnlike of the radial velocities, if they exist
-    if x_rv and y_rv and yerr_rv:
-        lnlike_rv = 0.0
-        for inst in x_rv:
-            vsys = theta[params.index('vsys_{}'.format(inst))]
-            model_rv = rv_curve_model(t_obs=x_rv[inst],
-                                      t0=t0,
-                                      period=period,
-                                      radius_1=r1_a,
-                                      radius_2=r2_a,
-                                      sbratio=sbratio,
-                                      a=a_rs,
-                                      q=q,
-                                      incl=incl,
-                                      f_s=f_s,
-                                      f_c=f_c,
-                                      v_sys=vsys)
-            lnlike_rv += lnlike_sub('rv', model_rv, y_rv[inst], yerr_rv[inst])
+    if x_rv1 and y_rv1 and yerr_rv1:
+        lnlike_rv1 = 0.0
+        for inst in x_rv1:
+            vsys1 = theta[params.index('vsys1_{}'.format(inst))]
+            model_rv1, _ = rv_curve_model(t_obs=x_rv1[inst],
+                                          t0=t0,
+                                          period=period,
+                                          radius_1=r1_a,
+                                          radius_2=r2_a,
+                                          sbratio=sbratio,
+                                          a=a_rs,
+                                          q=q,
+                                          incl=incl,
+                                          f_s=f_s,
+                                          f_c=f_c,
+                                          v_sys1=vsys1,
+                                          v_sys2=0)
+            lnlike_rv1 += lnlike_sub('rv1', model_rv1, y_rv1[inst], yerr_rv1[inst])
+
+    if x_rv2 and y_rv2 and yerr_rv2:
+        lnlike_rv2 = 0.0
+        for inst in x_rv2:
+            vsys2 = theta[params.index('vsys2_{}'.format(inst))]
+            _, model_rv2 = rv_curve_model(t_obs=x_rv2[inst],
+                                          t0=t0,
+                                          period=period,
+                                          radius_1=r1_a,
+                                          radius_2=r2_a,
+                                          sbratio=sbratio,
+                                          a=a_rs,
+                                          q=q,
+                                          incl=incl,
+                                          f_s=f_s,
+                                          f_c=f_c,
+                                          v_sys1=0,
+                                          v_sys2=vsys2)
+            lnlike_rv2 += lnlike_sub('rv2', model_rv2, y_rv2[inst], yerr_rv2[inst])
 
     # External priors: inspiration from Liam's code to use Gaussians
     # priors from spectroscopy to constrain the fit
-    lnpriors_external = 0
+    #lnpriors_external = 0
 
     # check if we have any external priors
-    if external:
-        # stellar mass prior
-        if 'm1' in external.keys():
-            m_1_pr_0 = external['m1']['value']
-            m_1_pr_s = external['m1']['weight']
-            ln_m_1 = -0.5*(((m_1-m_1_pr_0)/m_1_pr_s)**2 + np.log(m_1_pr_s**2))
-            lnpriors_external += ln_m_1
-
-        # stellar radius prior
-        if 'r1' in external.keys():
-            r_1_pr_0 = external['r1']['value']
-            r_1_pr_s = external['r1']['weight']
-            ln_r_1 = -0.5*(((r1_a*a_rs-r_1_pr_0)/r_1_pr_s)**2 + np.log(r_1_pr_s**2))
-            lnpriors_external += ln_r_1
-
-        # stellar logg prior
-        if 'logg1' in external.keys():
-            logg_1_pr_0 = external['logg1']['value']
-            logg_1_pr_s = external['logg1']['weight']
-            ln_logg_1 = -0.5*(((logg_1-logg_1_pr_0)/logg_1_pr_s)**2 + np.log(logg_1_pr_s**2))
-            lnpriors_external += ln_logg_1
-
-        # planet density priorm used for grazing systems
-        if 'den2' in external.keys():
-            den_2_pr_0 = external['den2']['value']
-            den_2_pr_s = external['den2']['weight']
-            # get m_2 in grams for the density prior
-            m_2_grams = m_2 * MSUN * 1000.
-            r_2_cm = r2_a * a_rs * RSUN * 100
-            den_2 = (3.*m_2_grams) / (4.*np.pi*(r_2_cm**3.))
-            ln_den_2 = -0.5*(((den_2-den_2_pr_0)/den_2_pr_s)**2 + np.log(den_2_pr_s**2))
-            lnpriors_external += ln_den_2
+    #if external:
+    #    # stellar mass prior
+    #    if 'm1' in external.keys():
+    #        m_1_pr_0 = external['m1']['value']
+    #        m_1_pr_s = external['m1']['weight']
+    #        ln_m_1 = -0.5*(((m_1-m_1_pr_0)/m_1_pr_s)**2 + np.log(m_1_pr_s**2))
+    #        lnpriors_external += ln_m_1
+    #
+    #    # stellar radius prior
+    #    if 'r1' in external.keys():
+    #        r_1_pr_0 = external['r1']['value']
+    #        r_1_pr_s = external['r1']['weight']
+    #        ln_r_1 = -0.5*(((r1_a*a_rs-r_1_pr_0)/r_1_pr_s)**2 + np.log(r_1_pr_s**2))
+    #        lnpriors_external += ln_r_1
+    #
+    #    # stellar logg prior
+    #    if 'logg1' in external.keys():
+    #        logg_1_pr_0 = external['logg1']['value']
+    #        logg_1_pr_s = external['logg1']['weight']
+    #        ln_logg_1 = -0.5*(((logg_1-logg_1_pr_0)/logg_1_pr_s)**2 + np.log(logg_1_pr_s**2))
+    #        lnpriors_external += ln_logg_1
+    #
+    #    # planet density priorm used for grazing systems
+    #    if 'den2' in external.keys():
+    #        den_2_pr_0 = external['den2']['value']
+    #        den_2_pr_s = external['den2']['weight']
+    #        # get m_2 in grams for the density prior
+    #        m_2_grams = m_2 * MSUN * 1000.
+    #        r_2_cm = r2_a * a_rs * RSUN * 100
+    #        den_2 = (3.*m_2_grams) / (4.*np.pi*(r_2_cm**3.))
+    #        ln_den_2 = -0.5*(((den_2-den_2_pr_0)/den_2_pr_s)**2 + np.log(den_2_pr_s**2))
+    #        lnpriors_external += ln_den_2
 
     # create the final lnlike
     lnlike = 0
     # add the likelihood from the photometry
     lnlike += lnlike_lc
     # add RV lnlike if present
-    if x_rv and y_rv and yerr_rv:
-        lnlike += lnlike_rv
+    if x_rv1 and y_rv1 and yerr_rv1:
+        lnlike += lnlike_rv1
+    if x_rv2 and y_rv2 and yerr_rv2:
+        lnlike += lnlike_rv2
+
     # add the lnlike from any external priors
-    lnlike += lnpriors_external
+    #lnlike += lnpriors_external
 
     return lnlike
 
 def lnprob(theta, config,
            x_lc, y_lc, yerr_lc,
-           x_rv, y_rv, yerr_rv):
+           x_rv1, y_rv1, yerr_rv1,
+           x_rv2, y_rv2, yerr_rv2):
     """
     Log probability function. Wraps lnprior and lnlike
 
@@ -923,12 +1004,18 @@ def lnprob(theta, config,
         y element of photometry (relative flux)
     yerr_lc : array-like
         yerr element of photometry (flux error)
-    x_rv : array-like
-        x element of rvs (time) | None
-    y_rv : array-like
-        y element of rvs (RV) | None
-    yerr_rv : array-like
-        yerr element of rvs (RV error) | None
+    x_rv1 : array-like
+        x element of rvs for primary (time) | None
+    y_rv1 : array-like
+        y element of rvs for primary (RV) | None
+    yerr_rv1 : array-like
+        yerr element of rvs for primary (RV error) | None
+    x_rv2 : array-like
+        x element of rvs for secondary (time) | None
+    y_rv2 : array-like
+        y element of rvs for secondary (RV) | None
+    yerr_rv2 : array-like
+        yerr element of rvs for secondary (RV error) | None
 
     Returns
     -------
@@ -944,7 +1031,8 @@ def lnprob(theta, config,
         return -np.inf
     return lp + lnlike(theta, config,
                        x_lc, y_lc, yerr_lc,
-                       x_rv, y_rv, yerr_rv)
+                       x_rv1, y_rv1, yerr_rv1,
+                       x_rv2, y_rv2, yerr_rv2)
 
 def findBestParameter(param, config):
     """
@@ -985,11 +1073,19 @@ if __name__ == "__main__":
         os.mkdir(outdir)
 
     # READ IN THE DATA
+
+    # read in the photometry
     x_lc, y_lc, yerr_lc = loadPhot(config)
-    if 'rvs' in config.keys():
-        x_rv, y_rv, yerr_rv = loadRvs(config)
+    # read in RVs
+    if 'rvs1' in config.keys():
+        x_rv1, y_rv1, yerr_rv1 = loadRvs(config, primary=True)
     else:
-        x_rv, y_rv, yerr_rv = None, None, None
+        x_rv1, y_rv1, yerr_rv1 = None, None, None
+    if 'rvs2' in config.keys():
+        x_rv2, y_rv2, yerr_rv2 = loadRvs(config, primary=False)
+    else:
+        x_rv2, y_rv2, yerr_rv2 = None, None, None
+
     # set up the sampler
     ndim = len(config['initials'])
     # recommended nwalkers is 4*n_parameters
@@ -1006,7 +1102,8 @@ if __name__ == "__main__":
     sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob,
                                     args=(config,
                                           x_lc, y_lc, yerr_lc,
-                                          x_rv, y_rv, yerr_rv),
+                                          x_rv1, y_rv1, yerr_rv1,
+                                          x_rv2, y_rv2, yerr_rv2),
                                     threads=args.threads)
     # run the production chain
     tstart = datetime.utcnow()
@@ -1025,14 +1122,19 @@ if __name__ == "__main__":
     print("Done.")
     tend = datetime.utcnow()
     print('Time to complete: {}'.format(tend - tstart))
+    # set up matplotlib
+    general()
     # plot and save the times series of each parameter
     for i, (initial_param, label) in enumerate(zip(config['initials'],
                                                    config['parameters'])):
-        fig, ax = plt.subplots(1, figsize=(10, 10))
-        ax.plot(sampler.chain[:, :, i].T, color="k", alpha=0.4)
-        ax.axhline(initial_param, color="#888888", lw=2)
+        # set matplotlib plot size
+        one_by_one()
+        fig, ax = plt.subplots(1)
+        ax.plot(sampler.chain[:, :, i].T, color="k", alpha=0.4, lw=0.5)
+        ax.axhline(initial_param, color="#888888", lw=1)
         ax.set_ylabel(label)
-        ax.set_xlabel('step number')
+        ax.set_xlabel('Step number')
+        fig.tight_layout()
         fig.savefig('{}/chain_{}steps_{}walkers_{}.png'.format(outdir,
                                                                nsteps,
                                                                nwalkers,
@@ -1067,25 +1169,34 @@ if __name__ == "__main__":
     config['best_params'] = best_params
     # make a corner plot
     labels = ["$"+p.replace('_','')+"$" for p in config['parameters']]
-    fig = corner.corner(samples,
-                        labels=labels,
-                        truths=config['initials'],
-                        plot_contours=False)
-    fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
-    fig.clf()
+
+    # pickle the corner plot info to plot separately
+    sav = (config['initials'], labels, samples)
+    corner_pickle_filename = '{}/corner_{}steps_{}walkers.pkl'.format(outdir, nsteps, nwalkers)
+    with open(corner_pickle_filename, 'wb') as pf:
+        pickle.dump(sav, pf, protocol=4)
+
+    #fig = corner.corner(samples,
+    #                    labels=labels,
+    #                    truths=config['initials'],
+    #                    plot_contours=False)
+    #fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
+    #fig.clf()
 
     # extract the final parameters in a generic way
     # to plot the final model and data together
     sbratio = findBestParameter('sbratio', config)
     r1_a = findBestParameter('r1_a', config)
     r2_r1 = findBestParameter('r2_r1', config)
+    a_rs = findBestParameter('a_rs', config)
     incl = findBestParameter('incl', config)
     t0 = findBestParameter('t0', config)
     period = findBestParameter('period', config)
     ecc = findBestParameter('ecc', config)
     omega = findBestParameter('omega', config)
     q = findBestParameter('q', config)
-    K = findBestParameter('K', config)
+    #K1 = findBestParameter('K1', config)
+    #K2 = findBestParameter('K2', config)
 
     # take most likely set of parameters and plot the models
     # make a dense mesh of time points for the lcs and RVs
@@ -1098,14 +1209,18 @@ if __name__ == "__main__":
 
     # derive some parameters from others
     r2_a = r2_r1 * r1_a
-    a_rs = (0.019771142*K*(1.+1./q)*period*np.sqrt(1.-ecc**2.)) / (np.sin(np.radians(incl)))
-    print('a_rsun: {:.4}'.format(a_rs))
+    #a_rs = (0.019771142*K1*(1.+1./q)*period*np.sqrt(1.-ecc**2.)) / (np.sin(np.radians(incl)))
 
     # set up the plot
     num_plots = len(config['lcs']) + 1
-    fig, ax = plt.subplots(num_plots, 1, figsize=(15, 15))
-    colours = ['k.', 'r.', 'g.', 'b.', 'c.']
-    colours_rvs = ['ko', 'ro', 'go', 'bo', 'co']
+    if num_plots == 2:
+        two_by_one()
+    elif num_plots > 2:
+        three_by_one()
+    fig, ax = plt.subplots(num_plots, 1)
+    colours = ['k.', 'g.', 'c.', 'm.']
+    colours_rvs1 = ['ko', 'go', 'co', 'mo']
+    colours_rvs2 = ['kv', 'gv', 'cv', 'mv']
     pn = 0
 
     # assumed we always have at least photometry
@@ -1130,54 +1245,104 @@ if __name__ == "__main__":
                                            ldc_1=ldcs_1,
                                            light_3=light_3)
         phase_lc = ((x_lc[filt] - t0)/period)%1
-        ax[pn].plot(phase_lc, y_lc[filt], 'k.')
-        ax[pn].plot(phase_lc-1, y_lc[filt], 'k.')
-        ax[pn].plot(x_model, final_lc_model, 'g-', lw=2)
-        ax[pn].set_xlim(-0.15, 0.15)
-        # work out the y limit
-        yllim = np.median(sorted(y_lc[filt])[:21]) - 0.01
-        yulim = np.median(sorted(y_lc[filt])[-21:]) + 0.01
-        ax[pn].set_ylim(yllim, yulim)
-        ax[pn].set_xlabel('Orbital Phase')
-        ax[pn].set_ylabel('Relative Flux')
-        ax[pn].set_title(filt)
+        ax[pn].plot(phase_lc, y_lc[filt], 'k.', ms=1)
+        ax[pn].plot(phase_lc-1, y_lc[filt], 'k.', ms=1)
+        ax[pn].plot(x_model, final_lc_model, 'g-', lw=1)
+        ax[pn].set_xlim(-0.25, 0.25)
+        ax[pn].set_xlabel('Orbital phase')
+        ax[pn].set_ylabel('Relative flux')
+        ax[pn].set_title(f"{filt} band")
         pn += 1
 
-    # plot RVs if we have them
-    if 'rvs' in config.keys():
+    # plot RV1s if we have them
+    if 'rvs1' in config.keys():
         # pick a reference instrument for scaling RVs
         # to match the systemtic velocities
-        ref_inst = config['rvs'].keys()[0]
-        vsys_ref = best_params['vsys_{}'.format(ref_inst)]['value']
-        x_rv_model = np.linspace(t0, t0+period, 1000)
-        phase_rv_model = ((x_rv_model-t0)/period)%1
-        final_rv_model = rv_curve_model(t_obs=x_rv_model,
-                                        t0=t0,
-                                        period=period,
-                                        radius_1=r1_a,
-                                        radius_2=r2_a,
-                                        sbratio=sbratio,
-                                        a=a_rs,
-                                        q=q,
-                                        incl=incl,
-                                        f_s=f_s,
-                                        f_c=f_c,
-                                        v_sys=vsys_ref)
+        ref_inst1 = list(config['rvs1'].keys())[0]
+        vsys_ref1 = best_params['vsys1_{}'.format(ref_inst1)]['value']
+        x_rv_model1 = np.linspace(t0, t0+period, 1000)
+        phase_rv_model1 = ((x_rv_model1-t0)/period)%1
+        final_rv_model1, _ = rv_curve_model(t_obs=x_rv_model1,
+                                                  t0=t0,
+                                                  period=period,
+                                                  radius_1=r1_a,
+                                                  radius_2=r2_a,
+                                                  sbratio=sbratio,
+                                                  a=a_rs,
+                                                  q=q,
+                                                  incl=incl,
+                                                  f_s=f_s,
+                                                  f_c=f_c,
+                                                  v_sys1=vsys_ref1,
+                                                  v_sys2=0)
+
+        # sort the phase model and rv model to stop the horizontal line
+        temp = zip(phase_rv_model1, final_rv_model1)
+        temp = sorted(temp)
+        phase_rv_model1, final_rv_model1 = zip(*temp)
+
         # plot the RVs + model
-        for i, inst in enumerate(config['rvs']):
-            phase_rv = ((x_rv[inst] - t0)/period)%1
-            if inst == ref_inst:
-                ax[pn].errorbar(phase_rv, y_rv[inst], yerr=yerr_rv[inst], fmt=colours[i])
+        for i, inst in enumerate(config['rvs1']):
+            phase_rv1 = ((x_rv1[inst] - t0)/period)%1
+            if inst == ref_inst1:
+                ax[pn].errorbar(phase_rv1, y_rv1[inst], yerr=yerr_rv1[inst],
+                                fmt=colours_rvs1[i], label=f"{inst}_rv1", ms=2, elinewidth=1.0)
             else:
-                vsys_diff = vsys_ref - best_params['vsys_{}'.format(inst)]['value']
-                ax[pn].errorbar(phase_rv, y_rv[inst] + vsys_diff,
-                                yerr=yerr_rv[inst], fmt=colours[i])
-        ax[pn].plot(phase_rv_model, final_rv_model, 'r-', lw=2)
+                vsys_diff1 = vsys_ref1 - best_params['vsys1_{}'.format(inst)]['value']
+                ax[pn].errorbar(phase_rv1, y_rv1[inst] + vsys_diff1,
+                                yerr=yerr_rv1[inst], fmt=colours_rvs1[i],
+                                label=f"{inst}_rv1", ms=2, elinewidth=1.0)
+        ax[pn].plot(phase_rv_model1, final_rv_model1, 'r--', lw=1.5, label='RV1')
         ax[pn].set_xlim(0, 1)
-        ax[pn].set_xlabel('Orbital Phase')
-        ax[pn].set_ylabel('Radial Velocity')
+        ax[pn].set_xlabel('Orbital phase')
+        ax[pn].set_ylabel('Radial velocity')
+        ax[pn].legend()
+
+    # plot RV2s if we have them
+    if 'rvs2' in config.keys():
+        # pick a reference instrument for scaling RVs
+        # to match the systemtic velocities
+        ref_inst2 = list(config['rvs2'].keys())[0]
+        vsys_ref2 = best_params['vsys2_{}'.format(ref_inst2)]['value']
+        x_rv_model2 = np.linspace(t0, t0+period, 1000)
+        phase_rv_model2 = ((x_rv_model2-t0)/period)%1
+        _, final_rv_model2 = rv_curve_model(t_obs=x_rv_model2,
+                                                  t0=t0,
+                                                  period=period,
+                                                  radius_1=r1_a,
+                                                  radius_2=r2_a,
+                                                  sbratio=sbratio,
+                                                  a=a_rs,
+                                                  q=q,
+                                                  incl=incl,
+                                                  f_s=f_s,
+                                                  f_c=f_c,
+                                                  v_sys1=0,
+                                                  v_sys2=vsys_ref2)
+        # sort the phase model and rv model to stop the horizontal line
+        temp = zip(phase_rv_model2, final_rv_model2)
+        temp = sorted(temp)
+        phase_rv_model2, final_rv_model2 = zip(*temp)
+
+        # plot the RVs + model
+        for i, inst in enumerate(config['rvs2']):
+            phase_rv2 = ((x_rv2[inst] - t0)/period)%1
+            if inst == ref_inst2:
+                ax[pn].errorbar(phase_rv2, y_rv2[inst], yerr=yerr_rv2[inst],
+                                fmt=colours_rvs2[i], label=f"{inst}_rv2", ms=2, elinewidth=1.0)
+            else:
+                vsys_diff2 = vsys_ref2 - best_params['vsys2_{}'.format(inst)]['value']
+                ax[pn].errorbar(phase_rv2, y_rv2[inst] + vsys_diff2,
+                                yerr=yerr_rv2[inst], fmt=colours_rvs2[i],
+                                label=f"{inst}_rv2", ms=2, elinewidth=1.0)
+        ax[pn].plot(phase_rv_model2, final_rv_model2, 'b:', lw=1.5, label='RV2')
+        ax[pn].set_xlim(0, 1)
+        ax[pn].set_xlabel('Orbital phase')
+        ax[pn].set_ylabel('Radial velocity')
+        ax[pn].legend()
 
     # save the final model fit
+    fig.tight_layout()
     fig.savefig('{}/chain_{}steps_{}walkers_fitted_models.png'.format(outdir,
                                                                       nsteps,
                                                                       nwalkers))
