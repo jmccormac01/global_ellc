@@ -22,8 +22,9 @@ from publications.plots.defaults import (
     two_by_one,
     three_by_one)
 
-# TODO: add support for ldc_2
-# TODO: move corner plot to separate file, defaults breaks it
+MISSING_PARAM = np.arange(1)
+
+# TODO: Why do RVS take ldcs?
 
 # use pylint as a syntax checker only
 # pylint: disable=invalid-name
@@ -44,6 +45,11 @@ RSUN = 6.957E8 # m
 MJUP = 1.2668653E17/6.67408E-11 # kg
 RJUP = 7.1492E7 # m
 AU = 1.496E11 # m
+
+# array of parameters that are defined per inst or per filter
+# this simplifies logic later
+MULTIS = ['vsys1', 'vsys2', 'ldc1_1', 'ldc1_2', 'ldc2_1', 'ldc2_2',
+          'light_3', 'flux_offset', 'sbratio', 'heat_1', 'heat_2']
 
 def argParse():
     """
@@ -69,6 +75,26 @@ def argParse():
                    help='number of threads to run',
                    type=int,
                    default=1)
+    p.add_argument('--shape_1',
+                   help='shape of star 1',
+                   choices=["roche", "roche_v", "sphere",
+                            "poly1p5", "poly3p0", "love"],
+                   default="sphere")
+    p.add_argument('--shape_2',
+                   help='shape of star 2',
+                   choices=["roche", "roche_v", "sphere",
+                            "poly1p5", "poly3p0", "love"],
+                   default="sphere")
+    p.add_argument('--grid_1',
+                   help='grid on star 1',
+                   choices=["very_sparse", "sparse", "default",
+                            "fine", "very_fine"],
+                   default="sparse")
+    p.add_argument('--grid_2',
+                   help='grid on star 1',
+                   choices=["very_sparse", "sparse", "default",
+                            "fine", "very_fine"],
+                   default="sparse")
     p.add_argument('--v',
                    help='increase verbosity',
                    action='store_true')
@@ -106,6 +132,8 @@ def readConfig(infile):
     config['n_priors'] = 0
     # read in the data
     f = open(infile).readlines()
+
+    # loop over the config file contents
     for line in f:
         print(line.rstrip())
         # skip comment lines
@@ -116,9 +144,11 @@ def readConfig(infile):
         if sp[0] == 'data_dir':
             config['data_dir'] = sp[1]
             continue
+
         elif sp[0] == 'out_dir':
             config['out_dir'] = sp[1]
             continue
+
         elif sp[0] == 'lc':
             if "lcs" not in config.keys():
                 config['lcs'] = defaultdict(list)
@@ -128,6 +158,7 @@ def readConfig(infile):
             config[lc_file] = {'cols': cols}
             config['lcs'][filt].append(lc_file)
             continue
+
         elif sp[0] == 'rv1':
             if "rvs1" not in config.keys():
                 config['rvs1'] = OrderedDict()
@@ -137,6 +168,7 @@ def readConfig(infile):
             config[rv_file] = {'cols': cols}
             config['rvs1'][inst] = rv_file
             continue
+
         elif sp[0] == 'rv2':
             if "rvs2" not in config.keys():
                 config['rvs2'] = OrderedDict()
@@ -146,6 +178,7 @@ def readConfig(infile):
             config[rv_file] = {'cols': cols}
             config['rvs2'][inst] = rv_file
             continue
+
         elif sp[0] == 'nsteps':
             config['nsteps'] = int(sp[1])
             continue
@@ -159,11 +192,39 @@ def readConfig(infile):
             if sp[1] in ['median', 'argmax']:
                 config['best_selection'] = sp[1]
                 continue
+
+        # read in paramters to ignore
+        if sp[1] == "X":
+            if 'ignore' not in config.keys():
+                config['ignore'] = OrderedDict()
+            if sp[0] in MULTIS:
+                try:
+                    param = sp[0]
+                    inst_filt = sp[2]
+                    param += "_{}".format(inst_filt)
+                    value = None
+                except IndexError:
+                    print("Ignore parameter not formatted correctly")
+                    print('PARAM X INST_FILT')
+                    print(line)
+                    sys.exit(1)
+                config['ignore'][param] = {'value': value}
+            else:
+                try:
+                    param = sp[0]
+                    value = None
+                except IndexError:
+                    print("Ignore parameter not formatted correctly")
+                    print('PARAM X')
+                    print(line)
+                    sys.exit(1)
+                config['ignore'][param] = {'value': value}
+
         # read Fixed parameters
-        if sp[1] == 'F':
+        elif sp[1] == 'F':
             if 'fixed' not in config.keys():
                 config['fixed'] = OrderedDict()
-            if sp[0] == 'vsys1' or sp[0] == 'vsys2' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
+            if sp[0] in MULTIS:
                 try:
                     param = sp[0]
                     inst_filt = sp[2]
@@ -185,11 +246,12 @@ def readConfig(infile):
                     print(line)
                     sys.exit(1)
                 config['fixed'][param] = {'value': value}
+
         # read fit parameters with No prior
         elif sp[1] == 'N':
             if 'no_prior' not in config.keys():
                 config['no_prior'] = OrderedDict()
-            if sp[0] == 'vsys1' or sp[0] == 'vsys2' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
+            if sp[0] in MULTIS:
                 try:
                     param = sp[0]
                     inst_filt = sp[2]
@@ -219,11 +281,12 @@ def readConfig(infile):
             config['parameters'].append(param)
             config['initials'].append(value)
             config['weights'].append(weight)
+
         # read fit parameters with Uniform priors
         elif sp[1] == 'U':
             if 'uniform_prior' not in config.keys():
                 config['uniform_prior'] = OrderedDict()
-            if sp[0] == 'vsys1' or sp[0] == 'vsys2' or sp[0] == 'ldc1_1' or sp[0] == 'ldc1_2' or sp[0] == 'light_3':
+            if sp[0] in MULTIS:
                 try:
                     param = sp[0]
                     inst_filt = sp[2]
@@ -264,6 +327,8 @@ def readConfig(infile):
             config['initials'].append(value)
             config['weights'].append(weight)
             config['n_priors'] += 1
+
+        # read fit parameters with external prior information
         elif sp[1] == 'E':
             if 'external_prior' not in config.keys():
                 config['external_prior'] = OrderedDict()
@@ -397,9 +462,10 @@ def loadRvs(config, primary=True):
         yerr_data[inst] = e
     return x_data, y_data, yerr_data
 
-def light_curve_model(t_obs, t0, period, radius_1, radius_2,
-                      sbratio, incl, f_s, f_c, a, q, ldc_1,
-                      spots_1=None, spots_2=None, light_3=0.0):
+def light_curve_model(t_obs, t_zero, period, radius_1, radius_2,
+                      sbratio, incl, f_s, f_c, a, q, ld_1, ld_2, ldc_1,
+                      ldc_2, heat_1, heat_2, spots_1, spots_2, light_3,
+                      flux_offset, shape_1, shape_2, grid_1, grid_2):
     """
     Takes in the binary parameters and returns an ellc model
     light curve. This can be used to generate models during
@@ -410,7 +476,7 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
     ----------
     t_obs : array-like
         array of times of observation
-    t0 : float
+    t_zero : float
         epoch of eclipsing system
     period : float
         orbital period of binary
@@ -430,15 +496,34 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
         semi-major axis of binary in units of rsun
     q : float
         mass ratio of the binary (m2/m1)
+    ld_1 : str
+        limbdarkening law, star 1, usually quad or None
+    ld_2 : str
+        limbdarkening law, star 2
     ldc_1 : array-like
         LDCs for primary eclipse ([ldc1_1, ldc1_2], assumes quadratic law)
+    ldc_2 : array-like
+        LDCs for secondary eclipse ([ldc2_1, ldc2_2], assumes quadratic law)
+    heat_1 : array-like
+        Heating coeff of primary
+    heat_2 : array-like
+        Heating coeff of secondary
     spots_1 : array-like
         spot parameters for spot_1 [check order!]
     spots_2 : array-like
         spot parameters for spot_2 [check order!]
     light_3 : float
         3rd light component for this band
-        default = 0.0
+    flux_offset : float
+        allow model to shift vertically in flux
+    shape_1 : str:
+        shape of star 1
+    shape_2 : str:
+        shape of star 2
+    grid_1 : str:
+        grid on star 1
+    grid_2 : str:
+        grid on star 2
 
     Returns
     -------
@@ -450,7 +535,7 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
     None
     """
     lc_model = ellc.lc(t_obs=t_obs,
-                       t_zero=t0,
+                       t_zero=t_zero,
                        period=period,
                        radius_1=radius_1,
                        radius_2=radius_2,
@@ -459,20 +544,26 @@ def light_curve_model(t_obs, t0, period, radius_1, radius_2,
                        a=a,
                        q=q,
                        ldc_1=ldc_1,
-                       ld_1='quad',
-                       shape_1='sphere',
-                       shape_2='sphere',
-                       grid_1='sparse', # set these to default again later
-                       grid_2='sparse',
+                       ldc_2=ldc_2,
+                       ld_1=ld_1,
+                       ld_2=ld_2,
+                       shape_1=shape_1,
+                       shape_2=shape_2,
+                       grid_1=grid_1,
+                       grid_2=grid_2,
                        f_c=f_c,
                        f_s=f_s,
+                       heat_1=heat_1,
+                       heat_2=heat_2,
                        spots_1=spots_1,
                        spots_2=spots_2,
                        light_3=light_3)
-    return lc_model
+    return lc_model + flux_offset
 
-def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
-                   sbratio, incl, f_s, f_c, a, q, v_sys1, v_sys2):
+def rv_curve_model(t_obs, t_zero, period, radius_1, radius_2,
+                   sbratio, incl, f_s, f_c, a, q, ld_1, ld_2, ldc_1,
+                   ldc_2, heat_1, heat_2, v_sys1, v_sys2, spots_1,
+                   spots_2, shape_1, shape_2, grid_1, grid_2):
     """
     Takes in the binary parameters and returns an ellc model
     for the radial velocity curve
@@ -481,7 +572,7 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
     ----------
     t_obs : array-like
         array of times of observation
-    t0 : float
+    t_zero : float
         epoch of eclipsing system
     period : float
         orbital period of binary
@@ -501,10 +592,34 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
         semi-major axis of binary in units of rsun
     q : float
         mass ratio of the binary (m2/m1)
+    ld_1 : str
+        limbdarkening law, star 1, usually quad or None
+    ld_2 : str
+        limbdarkening law, star 2
+    ldc_1 : array-like
+        LDCs for primary eclipse ([ldc1_1, ldc1_2], assumes quadratic law)
+    ldc_2 : array-like
+        LDCs for secondary eclipse ([ldc2_1, ldc2_2], assumes quadratic law)
+    heat_1 : array-like
+        Heating coeff of primary
+    heat_2 : array-like
+        Heating coeff of secondary
     vsys1 : float
         systemtic velocity for the target primary
     vsys2 : float
         systemtic velocity for the target secondary
+    spots_1 : array-like
+        spot parameters for spot_1 [check order!]
+    spots_2 : array-like
+        spot parameters for spot_2 [check order!]
+    shape_1 : str:
+        shape of star 1
+    shape_2 : str:
+        shape of star 2
+    grid_1 : str:
+        grid on star 1
+    grid_2 : str:
+        grid on star 2
 
     Returns
     -------
@@ -518,7 +633,7 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
     None
     """
     rv1, rv2 = ellc.rv(t_obs=t_obs,
-                       t_zero=t0,
+                       t_zero=t_zero,
                        period=period,
                        radius_1=radius_1,
                        radius_2=radius_2,
@@ -526,13 +641,22 @@ def rv_curve_model(t_obs, t0, period, radius_1, radius_2,
                        sbratio=sbratio,
                        a=a,
                        q=q,
-                       shape_1='sphere',
-                       shape_2='sphere',
-                       grid_1='sparse',
-                       grid_2='sparse',
+                       ldc_1=ldc_1,
+                       ldc_2=ldc_2,
+                       ld_1=ld_1,
+                       ld_2=ld_2,
+                       shape_1=shape_1,
+                       shape_2=shape_2,
+                       grid_1=grid_1,
+                       grid_2=grid_2,
                        f_c=f_c,
                        f_s=f_s,
-                       flux_weighted=False)
+                       heat_1=heat_1,
+                       heat_2=heat_2,
+                       spots_1=spots_1,
+                       spots_2=spots_2,
+                       flux_weighted=True)
+
     # account for the systemic velocity
     rv_model1 = rv1 + v_sys1
     rv_model2 = rv2 + v_sys2
@@ -669,14 +793,22 @@ def lnlike(theta, config,
     no_prior = config['no_prior']
     uniform = config['uniform_prior']
     external = config['external_prior']
+    ignore = config['ignore']
+    shapes = config['shapes']
 
-    # t0
-    if 't0' in no_prior or 't0' in uniform:
-        t0 = theta[params.index('t0')]
-    elif 't0' in fixed:
-        t0 = fixed['t0']['value']
+    shape_1 = shapes['shape_1']
+    shape_2 = shapes['shape_2']
+    grid_1 = shapes['grid_1']
+    grid_2 = shapes['grid_2']
+
+    # The following parameters are necessary for any run
+    # t_zero
+    if 't_zero' in no_prior or 't_zero' in uniform:
+        t_zero = theta[params.index('t_zero')]
+    elif 't_zero' in fixed:
+        t_zero = fixed['t_zero']['value']
     else:
-        raise IndexError('Cannot find t0 in lnlike')
+        raise IndexError('Cannot find t_zero in lnlike')
 
     # period
     if 'period' in no_prior or 'period' in uniform:
@@ -694,7 +826,7 @@ def lnlike(theta, config,
     else:
         raise IndexError('Cannot find r1_a in lnlike')
 
-    # radius_2
+    # r2_r1
     if 'r2_r1' in no_prior or 'r2_r1' in uniform:
         r2_r1 = theta[params.index('r2_r1')]
     elif 'r2_r1' in fixed:
@@ -702,21 +834,13 @@ def lnlike(theta, config,
     else:
         raise IndexError('Cannot find r2_r1 in lnlike')
 
-    # radius_2
+    # a_rs
     if 'a_rs' in no_prior or 'a_rs' in uniform:
         a_rs = theta[params.index('a_rs')]
     elif 'a_rs' in fixed:
         a_rs = fixed['a_rs']['value']
     else:
         raise IndexError('Cannot find r2_r1 in lnlike')
-
-    # sbratio
-    if 'sbratio' in no_prior or 'sbratio' in uniform:
-        sbratio = theta[params.index('sbratio')]
-    elif 'sbratio' in fixed:
-        sbratio = fixed['sbratio']['value']
-    else:
-        raise IndexError('Cannot find sbratio in lnlike')
 
     # q
     if 'q' in no_prior or 'q' in uniform:
@@ -725,22 +849,6 @@ def lnlike(theta, config,
         q = fixed['q']['value']
     else:
         raise IndexError('Cannot find q in lnlike')
-
-    # K1
-    #if 'K1' in no_prior or 'K1' in uniform:
-    #    K1 = theta[params.index('K1')]
-    #elif 'K1' in fixed:
-    #    K1 = fixed['K1']['value']
-    #else:
-    #    raise IndexError('Cannot find K1 in lnlike')
-
-    # K2
-    #if 'K2' in no_prior or 'K2' in uniform:
-    #    K2 = theta[params.index('K2')]
-    #elif 'K2' in fixed:
-    #    K2 = fixed['K2']['value']
-    #else:
-    #    raise IndexError('Cannot find K2 in lnlike')
 
     # incl
     if 'incl' in no_prior or 'incl' in uniform:
@@ -769,7 +877,6 @@ def lnlike(theta, config,
     # set up some combined params
     f_s = np.sqrt(ecc)*np.sin(omega*np.pi/180.)
     f_c = np.sqrt(ecc)*np.cos(omega*np.pi/180.)
-
 
     # derive some parameters from others
     # constants for 'a' and 'm' from Harmanec & Prsa, arXiv:1106.1508v2
@@ -832,34 +939,44 @@ def lnlike(theta, config,
         if args.v:
             print('f_s violation...')
         return -np.inf
-    #if K1 < 0:
-    #    if args.v:
-    #        print('K1 violation...')
-    #    return -np.inf
-    #if K2 < 0:
-    #    if args.v:
-    #        print('K2 violation...')
-    #    return -np.inf
-    #if logg_1 < 0:
-    #    if args.v:
-    #        print('logg_1 violation...')
-    #    return -np.inf
-    #if m_2 < 0:
-    #    if args.v:
-    #        print('m_2 violation...')
-    #    return -np.inf
+
+    # force these to be None for now
+    # spots_1
+    spots_1 = None
+    # spots_2
+    spots_2 = None
 
     # calculate lnlike of light curves
     lnlike_lc = 0.0
     for filt in x_lc:
+        # These parameters are defined per filter
+        # All but sbratio can be ignored
+        flux_offset_keyword = "flux_offset_{}".format(filt)
         ldc1_1_keyword = "ldc1_1_{}".format(filt)
         ldc1_2_keyword = "ldc1_2_{}".format(filt)
+        ldc2_1_keyword = "ldc2_1_{}".format(filt)
+        ldc2_2_keyword = "ldc2_2_{}".format(filt)
         light_3_keyword = "light_3_{}".format(filt)
+        sbratio_keyword = "sbratio_{}".format(filt)
+        heat_1_keyword = "heat_1_{}".format(filt)
+        heat_2_keyword = "heat_2_{}".format(filt)
+
+        # flux_offset_filt
+        if flux_offset_keyword in no_prior or flux_offset_keyword in uniform:
+            flux_offset = theta[params.index(flux_offset_keyword)]
+        elif flux_offset_keyword in fixed:
+            flux_offset = fixed[flux_offset_keyword]['value']
+        elif flux_offset_keyword in ignore:
+            flux_offset = 0.0
+        else:
+            raise IndexError('Cannot find {} in lnlike'.format(flux_offset_keyword))
         # ldc1_1_filt
         if ldc1_1_keyword in no_prior or ldc1_1_keyword in uniform:
             ldc1_1 = theta[params.index(ldc1_1_keyword)]
         elif ldc1_1_keyword in fixed:
             ldc1_1 = fixed[ldc1_1_keyword]['value']
+        elif ldc1_1_keyword in ignore:
+            ldc1_1 = None
         else:
             raise IndexError('Cannot find {} in lnlike'.format(ldc1_1_keyword))
         # ldc1_2_filt
@@ -867,6 +984,26 @@ def lnlike(theta, config,
             ldc1_2 = theta[params.index(ldc1_2_keyword)]
         elif ldc1_2_keyword in fixed:
             ldc1_2 = fixed[ldc1_2_keyword]['value']
+        elif ldc1_2_keyword in ignore:
+            ldc1_2 = None
+        else:
+            raise IndexError('Cannot find {} in lnlike'.format(ldc1_2_keyword))
+        # ldc2_1_filt
+        if ldc2_1_keyword in no_prior or ldc2_1_keyword in uniform:
+            ldc2_1 = theta[params.index(ldc2_1_keyword)]
+        elif ldc2_1_keyword in fixed:
+            ldc2_1 = fixed[ldc2_1_keyword]['value']
+        elif ldc2_1_keyword in ignore:
+            ldc2_1 = None
+        else:
+            raise IndexError('Cannot find {} in lnlike'.format(ldc2_1_keyword))
+        # ldc2_2_filt
+        if ldc2_2_keyword in no_prior or ldc2_2_keyword in uniform:
+            ldc2_2 = theta[params.index(ldc2_2_keyword)]
+        elif ldc2_2_keyword in fixed:
+            ldc2_2 = fixed[ldc2_2_keyword]['value']
+        elif ldc2_2_keyword in ignore:
+            ldc2_2 = None
         else:
             raise IndexError('Cannot find {} in lnlike'.format(ldc1_2_keyword))
         # light_3_filt
@@ -874,23 +1011,75 @@ def lnlike(theta, config,
             light_3 = theta[params.index(light_3_keyword)]
         elif light_3_keyword in fixed:
             light_3 = fixed[light_3_keyword]['value']
+        elif light_3_keyword in ignore:
+            light_3 = 0.0
         else:
             raise IndexError('Cannot find {} in lnlike'.format(light_3_keyword))
-        # tweaking parameters
-        ldcs_1 = [ldc1_1, ldc1_2]
+        # sbratio_filt
+        if sbratio_keyword in no_prior or sbratio_keyword in uniform:
+            sbratio = theta[params.index(sbratio_keyword)]
+        elif sbratio_keyword in fixed:
+            sbratio = fixed[sbratio_keyword]['value']
+        else:
+            raise IndexError('Cannot find {} in lnlike'.format(sbratio_keyword))
+        # heat_1_filt
+        if heat_1_keyword in no_prior or heat_1_keyword in uniform:
+            heat_1 = theta[params.index(heat_1_keyword)]
+        elif heat_1_keyword in fixed:
+            heat_1 = fixed[heat_1_keyword]['value']
+        elif heat_1_keyword in ignore:
+            heat_1 = None
+        else:
+            raise IndexError('Cannot find {} in lnlike'.format(heat_1_keyword))
+        # heat_2_filt
+        if heat_2_keyword in no_prior or heat_2_keyword in uniform:
+            heat_2 = theta[params.index(heat_2_keyword)]
+        elif heat_2_keyword in fixed:
+            heat_2 = fixed[heat_2_keyword]['value']
+        elif heat_2_keyword in ignore:
+            heat_2 = None
+        else:
+            raise IndexError('Cannot find {} in lnlike'.format(heat_2_keyword))
+
+        # set up combined parameters
+        if ldc1_1 is None or ldc1_2 is None:
+            ldcs_1 = None
+            ld_1 = None
+        else:
+            ldcs_1 = [ldc1_1, ldc1_2]
+            ld_1 = 'quad'
+        if ldc2_1 is None or ldc2_2 is None:
+            ldcs_2 = None
+            ld_2 = None
+        else:
+            ldcs_2 = [ldc2_1, ldc2_2]
+            ld_2 = 'quad'
+
         model_lc = light_curve_model(t_obs=x_lc[filt],
-                                     t0=t0,
+                                     t_zero=t_zero,
                                      period=period,
                                      radius_1=r1_a,
                                      radius_2=r2_a,
                                      sbratio=sbratio,
-                                     a=a_rs,
-                                     q=q,
                                      incl=incl,
                                      f_s=f_s,
                                      f_c=f_c,
+                                     a=a_rs,
+                                     q=q,
+                                     ld_1=ld_1,
+                                     ld_2=ld_2,
                                      ldc_1=ldcs_1,
-                                     light_3=light_3)
+                                     ldc_2=ldcs_2,
+                                     heat_1=heat_1,
+                                     heat_2=heat_2,
+                                     spots_1=spots_1,
+                                     spots_2=spots_2,
+                                     light_3=light_3,
+                                     flux_offset=flux_offset,
+                                     shape_1=shape_1,
+                                     shape_2=shape_2,
+                                     grid_1=grid_1,
+                                     grid_2=grid_2)
         lnlike_lc += lnlike_sub('phot', model_lc, y_lc[filt], yerr_lc[filt])
 
     # calculate lnlike of the radial velocities, if they exist
@@ -899,18 +1088,30 @@ def lnlike(theta, config,
         for inst in x_rv1:
             vsys1 = theta[params.index('vsys1_{}'.format(inst))]
             model_rv1, _ = rv_curve_model(t_obs=x_rv1[inst],
-                                          t0=t0,
+                                          t_zero=t_zero,
                                           period=period,
                                           radius_1=r1_a,
                                           radius_2=r2_a,
                                           sbratio=sbratio,
-                                          a=a_rs,
-                                          q=q,
                                           incl=incl,
                                           f_s=f_s,
                                           f_c=f_c,
+                                          a=a_rs,
+                                          q=q,
+                                          ld_1=ld_1,
+                                          ld_2=ld_2,
+                                          ldc_1=ldcs_1,
+                                          ldc_2=ldcs_2,
+                                          heat_1=heat_1,
+                                          heat_2=heat_2,
                                           v_sys1=vsys1,
-                                          v_sys2=0)
+                                          v_sys2=0,
+                                          spots_1=spots_1,
+                                          spots_2=spots_2,
+                                          shape_1=shape_1,
+                                          shape_2=shape_2,
+                                          grid_1=grid_1,
+                                          grid_2=grid_2)
             lnlike_rv1 += lnlike_sub('rv1', model_rv1, y_rv1[inst], yerr_rv1[inst])
 
     if x_rv2 and y_rv2 and yerr_rv2:
@@ -918,18 +1119,30 @@ def lnlike(theta, config,
         for inst in x_rv2:
             vsys2 = theta[params.index('vsys2_{}'.format(inst))]
             _, model_rv2 = rv_curve_model(t_obs=x_rv2[inst],
-                                          t0=t0,
+                                          t_zero=t_zero,
                                           period=period,
                                           radius_1=r1_a,
                                           radius_2=r2_a,
                                           sbratio=sbratio,
-                                          a=a_rs,
-                                          q=q,
                                           incl=incl,
                                           f_s=f_s,
                                           f_c=f_c,
+                                          a=a_rs,
+                                          q=q,
+                                          ld_1=ld_1,
+                                          ld_2=ld_2,
+                                          ldc_1=ldcs_1,
+                                          ldc_2=ldcs_2,
+                                          heat_1=heat_1,
+                                          heat_2=heat_2,
                                           v_sys1=0,
-                                          v_sys2=vsys2)
+                                          v_sys2=vsys2,
+                                          spots_1=spots_1,
+                                          spots_2=spots_2,
+                                          shape_1=shape_1,
+                                          shape_2=shape_2,
+                                          grid_1=grid_1,
+                                          grid_2=grid_2)
             lnlike_rv2 += lnlike_sub('rv2', model_rv2, y_rv2[inst], yerr_rv2[inst])
 
     # External priors: inspiration from Liam's code to use Gaussians
@@ -1062,15 +1275,29 @@ def findBestParameter(param, config):
         return best_params[param]['value']
     elif param in config['fixed']:
         return config['fixed'][param]['value']
+    elif param in config['ignore']:
+        return None
     else:
         raise IndexError('Cannot find {} in best_parameters | fixed'.format(param))
 
 if __name__ == "__main__":
     args = argParse()
+
     config = readConfig(args.config)
     outdir = config['out_dir']
     if not os.path.exists(outdir):
         os.mkdir(outdir)
+
+    # get star modelling types
+    shape_1 = args.shape_1
+    shape_2 = args.shape_2
+    grid_1 = args.grid_1
+    grid_2 = args.grid_2
+    config['shapes']={}
+    config['shapes']['shape_1'] = shape_1
+    config['shapes']['shape_2'] = shape_2
+    config['shapes']['grid_1'] = grid_1
+    config['shapes']['grid_2'] = grid_2
 
     # READ IN THE DATA
 
@@ -1105,6 +1332,7 @@ if __name__ == "__main__":
                                           x_rv1, y_rv1, yerr_rv1,
                                           x_rv2, y_rv2, yerr_rv2),
                                     threads=args.threads)
+
     # run the production chain
     tstart = datetime.utcnow()
     print("Running MCMC...")
@@ -1140,7 +1368,13 @@ if __name__ == "__main__":
                                                                nwalkers,
                                                                label))
     # calculate the most likely set of parameters
-    burnin = int(input('Enter burnin period: '))
+    burnin = None
+    while burnin is None:
+        try:
+            burnin = int(input('Enter burnin period: '))
+            break
+        except ValueError:
+            continue
     samples = sampler.chain[:, burnin:, :].reshape((-1, ndim))
     # determine the most likely set of parameters
     # print them to screen and log them to disc
@@ -1176,27 +1410,19 @@ if __name__ == "__main__":
     with open(corner_pickle_filename, 'wb') as pf:
         pickle.dump(sav, pf, protocol=4)
 
-    #fig = corner.corner(samples,
-    #                    labels=labels,
-    #                    truths=config['initials'],
-    #                    plot_contours=False)
-    #fig.savefig('{}/corner_{}steps_{}walkers.png'.format(outdir, nsteps, nwalkers))
-    #fig.clf()
-
     # extract the final parameters in a generic way
     # to plot the final model and data together
-    sbratio = findBestParameter('sbratio', config)
     r1_a = findBestParameter('r1_a', config)
     r2_r1 = findBestParameter('r2_r1', config)
     a_rs = findBestParameter('a_rs', config)
     incl = findBestParameter('incl', config)
-    t0 = findBestParameter('t0', config)
+    t_zero = findBestParameter('t_zero', config)
     period = findBestParameter('period', config)
     ecc = findBestParameter('ecc', config)
     omega = findBestParameter('omega', config)
     q = findBestParameter('q', config)
-    #K1 = findBestParameter('K1', config)
-    #K2 = findBestParameter('K2', config)
+    spots_1 = findBestParameter('spots_1', config)
+    spots_2 = findBestParameter('spots_2', config)
 
     # take most likely set of parameters and plot the models
     # make a dense mesh of time points for the lcs and RVs
@@ -1229,26 +1455,58 @@ if __name__ == "__main__":
     for filt in config['lcs']:
         ldc1_1 = findBestParameter('ldc1_1_{}'.format(filt), config)
         ldc1_2 = findBestParameter('ldc1_2_{}'.format(filt), config)
+        ldc2_1 = findBestParameter('ldc2_1_{}'.format(filt), config)
+        ldc2_2 = findBestParameter('ldc2_2_{}'.format(filt), config)
+        heat_1 = findBestParameter('heat_1_{}'.format(filt), config)
+        heat_2 = findBestParameter('heat_2_{}'.format(filt), config)
         light_3 = findBestParameter('light_3_{}'.format(filt), config)
-        ldcs_1 = [ldc1_1, ldc1_2]
+        flux_offset = findBestParameter('flux_offset_{}'.format(filt), config)
+        sbratio = findBestParameter('sbratio_{}'.format(filt), config)
+
+        # set up combined parameters
+        if ldc1_1 is None or ldc1_2 is None:
+            ldcs_1 = None
+            ld_1 = None
+        else:
+            ldcs_1 = [ldc1_1, ldc1_2]
+            ld_1 = 'quad'
+        if ldc2_1 is None or ldc2_2 is None:
+            ldcs_2 = None
+            ld_2 = None
+        else:
+            ldcs_2 = [ldc2_1, ldc2_2]
+            ld_2 = 'quad'
+
         final_lc_model = light_curve_model(t_obs=x_model,
-                                           t0=0.0,
+                                           t_zero=0.0,
                                            period=1.0,
                                            radius_1=r1_a,
                                            radius_2=r2_a,
                                            sbratio=sbratio,
-                                           a=a_rs,
-                                           q=q,
                                            incl=incl,
                                            f_s=f_s,
                                            f_c=f_c,
+                                           a=a_rs,
+                                           q=q,
+                                           ld_1=ld_1,
+                                           ld_2=ld_2,
                                            ldc_1=ldcs_1,
-                                           light_3=light_3)
-        phase_lc = ((x_lc[filt] - t0)/period)%1
+                                           ldc_2=ldcs_2,
+                                           heat_1=heat_1,
+                                           heat_2=heat_2,
+                                           spots_1=spots_1,
+                                           spots_2=spots_2,
+                                           light_3=light_3,
+                                           flux_offset=flux_offset,
+                                           shape_1=shape_1,
+                                           shape_2=shape_2,
+                                           grid_1=grid_1,
+                                           grid_2=grid_2)
+        phase_lc = ((x_lc[filt] - t_zero)/period)%1
         ax[pn].plot(phase_lc, y_lc[filt], 'k.', ms=1)
         ax[pn].plot(phase_lc-1, y_lc[filt], 'k.', ms=1)
         ax[pn].plot(x_model, final_lc_model, 'g-', lw=1)
-        ax[pn].set_xlim(-0.25, 0.25)
+        ax[pn].set_xlim(-0.5, 0.5)
         ax[pn].set_xlabel('Orbital phase')
         ax[pn].set_ylabel('Relative flux')
         ax[pn].set_title(f"{filt} band")
@@ -1260,21 +1518,33 @@ if __name__ == "__main__":
         # to match the systemtic velocities
         ref_inst1 = list(config['rvs1'].keys())[0]
         vsys_ref1 = best_params['vsys1_{}'.format(ref_inst1)]['value']
-        x_rv_model1 = np.linspace(t0, t0+period, 1000)
-        phase_rv_model1 = ((x_rv_model1-t0)/period)%1
+        x_rv_model1 = np.linspace(t_zero, t_zero+period, 1000)
+        phase_rv_model1 = ((x_rv_model1-t_zero)/period)%1
         final_rv_model1, _ = rv_curve_model(t_obs=x_rv_model1,
-                                                  t0=t0,
-                                                  period=period,
-                                                  radius_1=r1_a,
-                                                  radius_2=r2_a,
-                                                  sbratio=sbratio,
-                                                  a=a_rs,
-                                                  q=q,
-                                                  incl=incl,
-                                                  f_s=f_s,
-                                                  f_c=f_c,
-                                                  v_sys1=vsys_ref1,
-                                                  v_sys2=0)
+                                            t_zero=t_zero,
+                                            period=period,
+                                            radius_1=r1_a,
+                                            radius_2=r2_a,
+                                            sbratio=sbratio,
+                                            incl=incl,
+                                            f_s=f_s,
+                                            f_c=f_c,
+                                            a=a_rs,
+                                            q=q,
+                                            ld_1=ld_1,
+                                            ld_2=ld_2,
+                                            ldc_1=ldcs_1,
+                                            ldc_2=ldcs_2,
+                                            heat_1=heat_1,
+                                            heat_2=heat_2,
+                                            v_sys1=vsys_ref1,
+                                            v_sys2=0,
+                                            spots_1=spots_1,
+                                            spots_2=spots_2,
+                                            shape_1=shape_1,
+                                            shape_2=shape_2,
+                                            grid_1=grid_1,
+                                            grid_2=grid_2)
 
         # sort the phase model and rv model to stop the horizontal line
         temp = zip(phase_rv_model1, final_rv_model1)
@@ -1283,7 +1553,7 @@ if __name__ == "__main__":
 
         # plot the RVs + model
         for i, inst in enumerate(config['rvs1']):
-            phase_rv1 = ((x_rv1[inst] - t0)/period)%1
+            phase_rv1 = ((x_rv1[inst] - t_zero)/period)%1
             if inst == ref_inst1:
                 ax[pn].errorbar(phase_rv1, y_rv1[inst], yerr=yerr_rv1[inst],
                                 fmt=colours_rvs1[i], label=f"{inst}_rv1", ms=2, elinewidth=1.0)
@@ -1304,21 +1574,34 @@ if __name__ == "__main__":
         # to match the systemtic velocities
         ref_inst2 = list(config['rvs2'].keys())[0]
         vsys_ref2 = best_params['vsys2_{}'.format(ref_inst2)]['value']
-        x_rv_model2 = np.linspace(t0, t0+period, 1000)
-        phase_rv_model2 = ((x_rv_model2-t0)/period)%1
+        x_rv_model2 = np.linspace(t_zero, t_zero+period, 1000)
+        phase_rv_model2 = ((x_rv_model2-t_zero)/period)%1
         _, final_rv_model2 = rv_curve_model(t_obs=x_rv_model2,
-                                                  t0=t0,
+                                                  t_zero=t_zero,
                                                   period=period,
                                                   radius_1=r1_a,
                                                   radius_2=r2_a,
                                                   sbratio=sbratio,
-                                                  a=a_rs,
-                                                  q=q,
                                                   incl=incl,
                                                   f_s=f_s,
                                                   f_c=f_c,
+                                                  a=a_rs,
+                                                  q=q,
+                                                  ld_1=ld_1,
+                                                  ld_2=ld_2,
+                                                  ldc_1=ldcs_1,
+                                                  ldc_2=ldcs_2,
+                                                  heat_1=heat_1,
+                                                  heat_2=heat_2,
                                                   v_sys1=0,
-                                                  v_sys2=vsys_ref2)
+                                                  v_sys2=vsys_ref2,
+                                                  spots_1=spots_1,
+                                                  spots_2=spots_2,
+                                                  shape_1=shape_1,
+                                                  shape_2=shape_2,
+                                                  grid_1=grid_1,
+                                                  grid_2=grid_2)
+
         # sort the phase model and rv model to stop the horizontal line
         temp = zip(phase_rv_model2, final_rv_model2)
         temp = sorted(temp)
@@ -1326,7 +1609,7 @@ if __name__ == "__main__":
 
         # plot the RVs + model
         for i, inst in enumerate(config['rvs2']):
-            phase_rv2 = ((x_rv2[inst] - t0)/period)%1
+            phase_rv2 = ((x_rv2[inst] - t_zero)/period)%1
             if inst == ref_inst2:
                 ax[pn].errorbar(phase_rv2, y_rv2[inst], yerr=yerr_rv2[inst],
                                 fmt=colours_rvs2[i], label=f"{inst}_rv2", ms=2, elinewidth=1.0)
@@ -1346,4 +1629,3 @@ if __name__ == "__main__":
     fig.savefig('{}/chain_{}steps_{}walkers_fitted_models.png'.format(outdir,
                                                                       nsteps,
                                                                       nwalkers))
-
